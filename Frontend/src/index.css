@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: theme('colors.slate.200');
+  }
+  .dark * {
+    border-color: theme('colors.slate.800');
+  }
+}
+
+/* Custom modern scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Multi-Format Thermal & A4 Receipt Printing Rules */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-receipt, #printable-receipt *,
+  #printable-receipt-canvas, #printable-receipt-canvas * {
+    visibility: visible;
+  }
+  #printable-receipt, #printable-receipt-canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0 auto;
+    font-family: 'JetBrains Mono', monospace, ui-monospace;
+    color: black !important;
+    background: white !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .print-58mm {
+    width: 54mm !important;
+    max-width: 54mm !important;
+    font-size: 10px !important;
+    padding: 1mm 2mm !important;
+  }
+  .print-80mm {
+    width: 76mm !important;
+    max-width: 76mm !important;
+    font-size: 11px !important;
+    padding: 2mm 3mm !important;
+  }
+  .print-a4 {
+    width: 210mm !important;
+    max-width: 210mm !important;
+    font-size: 12px !important;
+    padding: 15mm 20mm !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
