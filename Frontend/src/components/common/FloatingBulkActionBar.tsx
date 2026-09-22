@@ -56,10 +56,10 @@ export const FloatingBulkActionBar: React.FC<FloatingBulkActionBarProps> = ({
               >
                 {act.icon && (
                   <span className="shrink-0 flex items-center">
-                    {typeof act.icon === 'function' ? (
-                      React.createElement(act.icon as React.ComponentType<{ className?: string }>, { className: 'w-3.5 h-3.5' })
-                    ) : (
+                    {React.isValidElement(act.icon) ? (
                       act.icon
+                    ) : (
+                      React.createElement(act.icon as React.ComponentType<{ className?: string }>, { className: 'w-3.5 h-3.5' })
                     )}
                   </span>
                 )}

@@ -1,0 +1,1 @@
+# GreenLife AI Django Package

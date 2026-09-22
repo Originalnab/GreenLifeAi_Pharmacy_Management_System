@@ -3,6 +3,8 @@ import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
 import { usePharmacy } from '../../context/PharmacyContext';
 import { AlertTriangle } from 'lucide-react';
+import { GlobalNotificationToast } from '../common/GlobalNotificationToast';
+import { GlobalConfirmModal } from '../common/GlobalConfirmModal';
 
 interface AppShellProps {
   children: (activeTab: string, setActiveTab: (tab: string) => void) => React.ReactNode;
@@ -27,6 +29,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           </button>
         </div>
       )}
+      <GlobalNotificationToast />
+      <GlobalConfirmModal />
       <TopBar />
       <div className="flex-1 flex overflow-hidden">
         <Sidebar 

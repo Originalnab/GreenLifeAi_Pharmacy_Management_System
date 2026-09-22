@@ -1,0 +1,829 @@
+[
+  {
+    "phase": "Health",
+    "method": "GET",
+    "path": "/health/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "{'status': 'ONLINE', 'service': 'GreenLife AI Pharmacy Management System Backend API', 'version': '1.0.0-rc', 'database': 'PostgreSQL 16 (Authoritative)', 'timestamp': None}"
+  },
+  {
+    "phase": "Phase 1",
+    "method": "POST",
+    "path": "/auth/login/",
+    "status_code": 200,
+    "success": true,
+    "payload": {
+      "identifier": "superadmin",
+      "password": "Admin@1234"
+    },
+    "details": "Adeyemi Oluwaseun Adeleke (Super Admin)"
+  },
+  {
+    "phase": "Phase 1",
+    "method": "GET",
+    "path": "/auth/me/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 1",
+    "method": "POST",
+    "path": "/auth/lock/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 1",
+    "method": "POST",
+    "path": "/auth/unlock/",
+    "status_code": 200,
+    "success": true,
+    "payload": {
+      "userId": "8eb42ece-916f-4118-836f-daf4fc720893",
+      "password": "Admin@1234"
+    },
+    "details": "{'success': True, 'message': 'Terminal unlocked.'}"
+  },
+  {
+    "phase": "Phase 1",
+    "method": "POST",
+    "path": "/auth/dismiss-notice/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 1",
+    "method": "GET",
+    "path": "/admin/profile/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Branch: Greenlife Central Branch (Victoria Island)"
+  },
+  {
+    "phase": "Phase 1",
+    "method": "GET",
+    "path": "/admin/storage-locations/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Found 10"
+  },
+  {
+    "phase": "Phase 1",
+    "method": "POST",
+    "path": "/admin/storage-locations/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "code": "LOC-TEST-90A8",
+      "name": "Dispensary Bay 1CD8",
+      "type": "DISPENSARY_SHELF",
+      "temperature_range": "AMBIENT_15_25C",
+      "description": "Secondary dispensary rack"
+    },
+    "details": "Created Location ID: 6813e5b3-e40d-4ecf-aa61-0ca666949b36"
+  },
+  {
+    "phase": "Phase 1",
+    "method": "GET",
+    "path": "/admin/users/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Found 10"
+  },
+  {
+    "phase": "Phase 1",
+    "method": "POST",
+    "path": "/admin/users/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "username": "pharm_7b227",
+      "first_name": "Amina",
+      "last_name": "Ibrahim",
+      "email": "amina_f719@greenlife.com",
+      "dob": "1994-08-15",
+      "phone": "+233245550011",
+      "role": "Pharmacist",
+      "license_number": "PCN-PH-A9E60"
+    },
+    "details": "New Staff ID: 0262d086-105e-4b2b-8e04-5817266141a8"
+  },
+  {
+    "phase": "Phase 1",
+    "method": "POST",
+    "path": "/admin/users/0262d086-105e-4b2b-8e04-5817266141a8/status/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Status: {'success': True, 'user': {'id': '0262d086-105e-4b2b-8e04-5817266141a8', 'username': 'pharm_7b227', 'email': 'amina_f719@greenlife.com', 'name': 'Amina Ibrahim', 'first_name': 'Amina', 'middle_name': None, 'last_name': 'Ibrahim', 'dob': '1994-08-15', 'phone': '+233245550011', 'alternate_phone': None, 'role': 'Pharmacist', 'license_number': 'PCN-PH-A9E60', 'avatar_url': None, 'is_active': True, 'must_change_password': True, 'is_temporary_password': True, 'password_reset_notice': None, 'branch_id': '20490c77-d144-4a69-bcea-ea2b440d7322', 'branch_name': 'Greenlife Central Branch (Victoria Island)', 'authorization': {'id': '8c2d8f9c-4dc2-4e3b-bf0e-cc1ce5dcbf68', 'max_discount_percent': '15.00', 'max_refund_limit': '200.0000', 'stock_adjustment_limit': '500.0000', 'expense_approval_limit': '0.0000', 'po_approval_limit': '0.0000', 'require_two_factor': False, 'can_override_price': True, 'can_view_cost_prices': False, 'can_view_profits': False, 'sessions_active': 0, 'last_password_change': '2026-09-21T14:52:22.328647Z', 'custom_permissions': None}, 'created_at': '2026-09-21T14:52:21.844095Z', 'updated_at': '2026-09-21T14:52:22.348807Z'}, 'message': 'Account for Amina Ibrahim is now Active.'}"
+  },
+  {
+    "phase": "Phase 1",
+    "method": "GET",
+    "path": "/admin/roles/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 1",
+    "method": "GET",
+    "path": "/audit/events/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Logged audit events: 66"
+  },
+  {
+    "phase": "Phase 2",
+    "method": "GET",
+    "path": "/catalogue/categories/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 2",
+    "method": "POST",
+    "path": "/catalogue/categories/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "code": "CAT-FBE2",
+      "name": "Analgesics-1076",
+      "description": "Pain relief & antipyretic therapeutics",
+      "is_active": true
+    },
+    "details": "Category ID: b2cb5f12-6510-4d93-bb42-4a716e71db4c"
+  },
+  {
+    "phase": "Phase 2",
+    "method": "GET",
+    "path": "/catalogue/dosage-forms/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 2",
+    "method": "POST",
+    "path": "/catalogue/dosage-forms/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "code": "DF-E3B",
+      "name": "Film-Coated Tablet b21",
+      "default_base_unit": "tablet",
+      "is_active": true
+    },
+    "details": "DosageForm ID: ba3b41d4-af26-432e-bfb3-767ef3be2ac6"
+  },
+  {
+    "phase": "Phase 2",
+    "method": "GET",
+    "path": "/catalogue/units/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 2",
+    "method": "POST",
+    "path": "/catalogue/units/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "code": "UOM-63B",
+      "name": "Standard Tablet cd0",
+      "symbol": "tab",
+      "type": "COUNT"
+    },
+    "details": "Unit ID: c2e72679-0140-4ec2-82e9-c4551d44a7c5"
+  },
+  {
+    "phase": "Phase 2",
+    "method": "GET",
+    "path": "/catalogue/dosage-presets/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 2",
+    "method": "GET",
+    "path": "/catalogue/products/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 2",
+    "method": "POST",
+    "path": "/catalogue/products/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "product_code": "PRD-8BFFBA",
+      "brand_name": "Ibuprofen Forte 99e5",
+      "generic_name": "Ibuprofen 400mg",
+      "category": "b2cb5f12-6510-4d93-bb42-4a716e71db4c",
+      "dosage_form": "ba3b41d4-af26-432e-bfb3-767ef3be2ac6",
+      "strength": "400mg",
+      "base_dispensing_unit": "tablet",
+      "strip_multiplier": 10,
+      "pack_box_multiplier": 100,
+      "cost_price_base": "1.2000",
+      "selling_price_base": "2.5000",
+      "reorder_level_base": 50,
+      "maximum_stock_base": 500,
+      "is_prescription_required": false,
+      "is_active": true
+    },
+    "details": "Product ID: 90d1d262-32e6-443f-8ca4-5dc22aa1ddf6"
+  },
+  {
+    "phase": "Phase 2",
+    "method": "GET",
+    "path": "/catalogue/packaging-units/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 2",
+    "method": "POST",
+    "path": "/catalogue/packaging-units/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "product": "90d1d262-32e6-443f-8ca4-5dc22aa1ddf6",
+      "tier_name": "Pack of 100",
+      "unit_label": "Box",
+      "multiplier_to_base": 100,
+      "wholesale_cost": "100.0000",
+      "retail_selling_price": "220.0000",
+      "is_dispensable": true
+    },
+    "details": "Packaging ID: 86b464a3-1961-4836-aa7d-ff376cf26f89"
+  },
+  {
+    "phase": "Phase 2",
+    "method": "GET",
+    "path": "/catalogue/alert-rules/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 2",
+    "method": "POST",
+    "path": "/catalogue/alert-rules/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "product": "90d1d262-32e6-443f-8ca4-5dc22aa1ddf6",
+      "min_days_to_expiry": 90,
+      "critical_stock_threshold": 30,
+      "action_required": "NOTIFY_STOCK_OFFICER",
+      "is_active": true
+    },
+    "details": "Alert Rule ID: 0b737a42-a1ba-4788-96ad-95803c0979a0"
+  },
+  {
+    "phase": "Phase 2",
+    "method": "GET",
+    "path": "/catalogue/import/template/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Template size: 425 bytes"
+  },
+  {
+    "phase": "Phase 2",
+    "method": "POST",
+    "path": "/catalogue/import/preview/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Valid rows: None"
+  },
+  {
+    "phase": "Phase 2",
+    "method": "GET",
+    "path": "/parties/suppliers/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 2",
+    "method": "POST",
+    "path": "/parties/suppliers/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "name": "Greenland Pharmaceuticals ba8",
+      "contact_person": "Sarah Boateng",
+      "phone": "+233241009988",
+      "email": "orders_003@greenland.gh",
+      "payment_terms_days": 30,
+      "is_active": true
+    },
+    "details": "Supplier ID: db49acdb-e3ed-416a-99f8-83d16dbcbb13"
+  },
+  {
+    "phase": "Phase 2",
+    "method": "GET",
+    "path": "/parties/customers/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 2",
+    "method": "POST",
+    "path": "/parties/customers/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "name": "Kofi Annan 07e",
+      "phone": "+233541620d4f",
+      "email": "kofi_e2b@example.com",
+      "credit_limit": "5000.00",
+      "current_credit_balance": "0.00",
+      "is_active": true
+    },
+    "details": "Customer ID: 4ae30551-f1ce-4922-97fc-e222b4ddf0d5"
+  },
+  {
+    "phase": "Phase 3",
+    "method": "GET",
+    "path": "/inventory/batches/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 3",
+    "method": "POST",
+    "path": "/inventory/batches/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "product": "90d1d262-32e6-443f-8ca4-5dc22aa1ddf6",
+      "batch_number": "BN-29F841",
+      "manufacturing_date": "2025-01-01",
+      "expiry_date": "2027-12-31",
+      "initial_quantity_base": 250,
+      "unit_cost_base": "1.2000",
+      "storage_location": "6813e5b3-e40d-4ecf-aa61-0ca666949b36",
+      "status": "ACTIVE"
+    },
+    "details": "Batch ID: c1774610-10bb-4baa-8dde-e89b84d7f363 (Num: BN-29F841)"
+  },
+  {
+    "phase": "Phase 3",
+    "method": "GET",
+    "path": "/inventory/balances/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 3",
+    "method": "GET",
+    "path": "/inventory/movements/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 3",
+    "method": "GET",
+    "path": "/inventory/adjustments/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 3",
+    "method": "POST",
+    "path": "/inventory/adjustments/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "batch": "c1774610-10bb-4baa-8dde-e89b84d7f363",
+      "previous_quantity_base": "250.00",
+      "counted_quantity_base": "255.00",
+      "variance_base": "5.00",
+      "reason": "Routine physical count reconciliation surplus"
+    },
+    "details": "Adjustment ID: a097b518-0a54-4f7e-95ee-0a12a209e752"
+  },
+  {
+    "phase": "Phase 3",
+    "method": "POST",
+    "path": "/inventory/fefo-allocate/",
+    "status_code": 200,
+    "success": true,
+    "payload": {
+      "product_id": "90d1d262-32e6-443f-8ca4-5dc22aa1ddf6",
+      "quantity_base": 15
+    },
+    "details": "Allocations: 1"
+  },
+  {
+    "phase": "Phase 3",
+    "method": "GET",
+    "path": "/procurement/orders/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 3",
+    "method": "POST",
+    "path": "/procurement/orders/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "supplier_id": "db49acdb-e3ed-416a-99f8-83d16dbcbb13",
+      "lines": [
+        {
+          "product_id": "90d1d262-32e6-443f-8ca4-5dc22aa1ddf6",
+          "quantity_ordered_base": 100,
+          "unit_cost_base": "1.1000"
+        }
+      ]
+    },
+    "details": "PO ID: 78b0277e-df22-477f-b22a-9c9dc9af8dba (PO-1F9557)"
+  },
+  {
+    "phase": "Phase 3",
+    "method": "GET",
+    "path": "/procurement/receipts/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 3",
+    "method": "POST",
+    "path": "/procurement/receipts/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "supplier_id": "db49acdb-e3ed-416a-99f8-83d16dbcbb13",
+      "storage_location_id": "6813e5b3-e40d-4ecf-aa61-0ca666949b36",
+      "supplier_invoice_number": "INV-68A90",
+      "lines": [
+        {
+          "product_id": "90d1d262-32e6-443f-8ca4-5dc22aa1ddf6",
+          "batch_number": "GRN-B-EC6D5",
+          "expiry_date": "2027-10-31",
+          "quantity_received_base": 100,
+          "unit_cost_base": "1.1000",
+          "selling_price_base": "2.5000"
+        }
+      ]
+    },
+    "details": "GRN ID: 6370558a-c9d6-44cb-ba98-3ed5daf09911"
+  },
+  {
+    "phase": "Phase 4",
+    "method": "GET",
+    "path": "/sales/shifts/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 4",
+    "method": "POST",
+    "path": "/sales/shifts/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "opening_float": "100.0000"
+    },
+    "details": "Shift: SHIFT-92A019 (ID: 24b45bce-0550-4f0c-851b-a6394a20a560)"
+  },
+  {
+    "phase": "Phase 4",
+    "method": "GET",
+    "path": "/sales/drafts/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 4",
+    "method": "POST",
+    "path": "/sales/drafts/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "customer_name": "Walk-in Patient",
+      "cart_data": [
+        {
+          "product_id": "90d1d262-32e6-443f-8ca4-5dc22aa1ddf6",
+          "quantity": 2,
+          "unit_price": 2.5
+        }
+      ]
+    },
+    "details": "Parked Draft: DRF-49FD82"
+  },
+  {
+    "phase": "Phase 4",
+    "method": "POST",
+    "path": "/sales/orders/checkout/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "cash_shift_id": "24b45bce-0550-4f0c-851b-a6394a20a560",
+      "customer_id": "4ae30551-f1ce-4922-97fc-e222b4ddf0d5",
+      "items": [
+        {
+          "product_id": "90d1d262-32e6-443f-8ca4-5dc22aa1ddf6",
+          "batch_id": "c1774610-10bb-4baa-8dde-e89b84d7f363",
+          "quantity": 2,
+          "unit_price": "2.5000",
+          "discount_amount": "0.0000",
+          "tax_amount": "0.0000"
+        }
+      ],
+      "lines": [
+        {
+          "product_id": "90d1d262-32e6-443f-8ca4-5dc22aa1ddf6",
+          "batch_id": "c1774610-10bb-4baa-8dde-e89b84d7f363",
+          "quantity": 2,
+          "unit_price": "2.5000",
+          "discount_amount": "0.0000",
+          "tax_amount": "0.0000"
+        }
+      ],
+      "tenders": [
+        {
+          "tender_method": "CASH",
+          "amount_paid": "5.0000"
+        }
+      ],
+      "discount_total": "0.0000",
+      "tax_total": "0.0000",
+      "bypass_rx_check": true
+    },
+    "details": "Sale Receipt: REC-35B75ABE (ID: 082060b5-2904-47ed-a1e2-36c484701c65)"
+  },
+  {
+    "phase": "Phase 4",
+    "method": "GET",
+    "path": "/sales/orders/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Total Sales Records: 8"
+  },
+  {
+    "phase": "Phase 4",
+    "method": "GET",
+    "path": "/sales/returns/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 4",
+    "method": "POST",
+    "path": "/sales/returns/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "sale_id": "082060b5-2904-47ed-a1e2-36c484701c65",
+      "refund_method": "CASH",
+      "total_refund_amount": "2.5000",
+      "return_reason": "Patient unsealed pack return",
+      "is_restocked_to_inventory": true,
+      "returned_items": [
+        {
+          "sale_line_id": "4ce91d60-e747-46cb-8970-1f145619a71c"
+        }
+      ]
+    },
+    "details": "Return: RET-0A6D99"
+  },
+  {
+    "phase": "Phase 4",
+    "method": "GET",
+    "path": "/sales/credit-notes/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 4",
+    "method": "GET",
+    "path": "/sales/credit-payments/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 4",
+    "method": "POST",
+    "path": "/sales/credit-payments/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "customer_id": "4ae30551-f1ce-4922-97fc-e222b4ddf0d5",
+      "amount_paid": "50.0000",
+      "payment_method": "CASH",
+      "reference": "Cash payment settlement"
+    },
+    "details": "Credit Pay Receipt: CPR-A5FC24"
+  },
+  {
+    "phase": "Phase 4",
+    "method": "POST",
+    "path": "/sales/shifts/{id}/close/",
+    "status_code": 200,
+    "success": true,
+    "payload": {
+      "closing_counted_cash": "105.0000",
+      "reconciliation_notes": "Shift reconciled with zero variance"
+    },
+    "details": "Shift Status: CLOSED"
+  },
+  {
+    "phase": "Phase 5",
+    "method": "GET",
+    "path": "/finance/expense-categories/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 5",
+    "method": "POST",
+    "path": "/finance/expense-categories/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "name": "Generator Fuel 17B",
+      "description": "Backup power fuel expenses"
+    },
+    "details": "Exp Cat ID: 2a9376ee-4b2b-4cb7-8be2-cf9343c18545"
+  },
+  {
+    "phase": "Phase 5",
+    "method": "GET",
+    "path": "/finance/expenses/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 5",
+    "method": "POST",
+    "path": "/finance/expenses/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "category_id": "2a9376ee-4b2b-4cb7-8be2-cf9343c18545",
+      "amount": "250.00",
+      "payment_method": "CASH",
+      "disbursed_to": "Apex Petroleum Service",
+      "purpose": "Diesel 50 Liters for generator"
+    },
+    "details": "Voucher: EXP-0E204A"
+  },
+  {
+    "phase": "Phase 5",
+    "method": "GET",
+    "path": "/finance/cash-ups/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 5",
+    "method": "POST",
+    "path": "/finance/cash-ups/reconcile/",
+    "status_code": 200,
+    "success": true,
+    "payload": {
+      "cash_up_date": "2026-09-21",
+      "opening_float": "100.0000",
+      "actual_counted_cash": "105.0000",
+      "notes": "Daily cash-drawer audit completed"
+    },
+    "details": "Reconciliation Status: OVERAGE"
+  },
+  {
+    "phase": "Phase 5",
+    "method": "GET",
+    "path": "/finance/loans/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": null
+  },
+  {
+    "phase": "Phase 5",
+    "method": "POST",
+    "path": "/finance/loans/",
+    "status_code": 201,
+    "success": true,
+    "payload": {
+      "lender_name": "CalBank Commercial SME Facility",
+      "principal_amount": "150000.00",
+      "interest_rate_percent": "11.50",
+      "start_date": "2026-02-01",
+      "tenure_months": 24,
+      "monthly_installment": "7200.00",
+      "outstanding_balance": "135000.00",
+      "status": "ACTIVE"
+    },
+    "details": "Loan ID: 92e8bd6a-8e06-437a-a3e9-066edf6221e1"
+  },
+  {
+    "phase": "Phase 5",
+    "method": "GET",
+    "path": "/reports/dashboard-kpis/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Dashboard KPIs (Keys: ['today_revenue', 'today_gross_profit', 'today_orders_count', 'total_inventory_valuation', 'critical_expiry_batches', 'warning_expiry_batches', 'low_stock_products_count', 'active_suppliers_count', 'revenue_trend'])"
+  },
+  {
+    "phase": "Phase 5",
+    "method": "GET",
+    "path": "/reports/fast-movers/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Fast & Slow Movers (Data Array)"
+  },
+  {
+    "phase": "Phase 5",
+    "method": "GET",
+    "path": "/reports/expiry-risk/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Expiry Risk Analytics (Data Array)"
+  },
+  {
+    "phase": "Phase 5",
+    "method": "GET",
+    "path": "/reports/pnl/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "P&L Summary (Keys: ['period', 'gross_revenue', 'cost_of_goods_sold', 'gross_profit', 'operating_expenses', 'net_profit', 'net_profit_margin_percent'])"
+  },
+  {
+    "phase": "Phase 5",
+    "method": "GET",
+    "path": "/reports/launcher/status/",
+    "status_code": 200,
+    "success": true,
+    "payload": null,
+    "details": "Launcher Status (Keys: ['status', 'database_engine', 'organization', 'active_branch', 'total_products', 'total_batches', 'total_sales', 'total_staff_users', 'environment'])"
+  }
+]

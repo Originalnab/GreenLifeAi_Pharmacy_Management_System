@@ -5,13 +5,16 @@ import {
   ArrowRightLeft, Layers, ShieldCheck, DollarSign, Check, Type,
   Tag, BookOpen, Sliders, Trash2, Info, HelpCircle, Save,
   Box, Package, Droplets, Syringe, Wind, Download, Printer, CheckSquare,
-  Table, LayoutGrid, FileSpreadsheet
+  Table, LayoutGrid, FileSpreadsheet, Upload, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { usePharmacy } from '../../context/PharmacyContext';
 import { Product, ProductPackagingTier, Category, DosagePreset, UnitType } from '../../types';
 import { FloatingBulkActionBar } from '../../components/common/FloatingBulkActionBar';
 import { WorkflowGuideNotice } from '../../components/common/WorkflowGuideNotice';
 import { FieldGuideNotice } from '../../components/common/FieldGuideNotice';
+import { ImportProductsModal } from './components/ImportProductsModal';
+import { Pagination } from '../../components/common/Pagination';
+import { usePagination } from '../../hooks/usePagination';
 
 interface CataloguePageProps {
   activeSubTab?: string;
@@ -30,7 +33,9 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
     addDosagePreset,
     deleteDosagePreset,
     addProduct, 
-    updateProduct, 
+    updateProduct,
+    deleteProduct,
+    bulkDeleteProducts,
     hasPermission, 
     formatCurrency, 
     currentCurrency, 
@@ -39,28 +44,45 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
     updateUnitType,
     deleteUnitType,
     globalBulkDiscountPercent,
-    setGlobalBulkDiscountPercent
+    setGlobalBulkDiscountPercent,
+    isModuleEnabled,
+    toast,
+    confirmDialog,
+    alertDialog
   } = usePharmacy();
 
   // Active in-page subtab
-  const [currentSubTab, setCurrentSubTab] = useState<'products' | 'categories' | 'dosage-forms' | 'predictor-rules' | 'units'>('products');
+  const catalogueSubTabKeys: Array<{ key: 'products' | 'categories' | 'dosage-forms' | 'units'; moduleId: string }> = [
+    { key: 'products', moduleId: 'catalogue:products' },
+    { key: 'categories', moduleId: 'catalogue:categories' },
+    { key: 'dosage-forms', moduleId: 'catalogue:dosage-forms' },
+    { key: 'units', moduleId: 'catalogue:units' }
+  ];
+
+  const firstAvailableSubTab = catalogueSubTabKeys.find(t => isModuleEnabled(t.moduleId) || isModuleEnabled(t.key))?.key || 'products';
+
+  const [currentSubTab, setCurrentSubTab] = useState<'products' | 'categories' | 'dosage-forms' | 'units'>('products');
 
   useEffect(() => {
     if (activeSubTab) {
-      if (activeSubTab === 'catalogue:categories') setCurrentSubTab('categories');
-      else if (activeSubTab === 'catalogue:dosage-forms') setCurrentSubTab('dosage-forms');
-      else if (activeSubTab === 'catalogue:predictor-rules') setCurrentSubTab('predictor-rules');
-      else if (activeSubTab === 'catalogue:units') setCurrentSubTab('units');
-      else setCurrentSubTab('products');
+      if (activeSubTab === 'catalogue:categories' && isModuleEnabled('catalogue:categories')) setCurrentSubTab('categories');
+      else if (activeSubTab === 'catalogue:dosage-forms' && isModuleEnabled('catalogue:dosage-forms')) setCurrentSubTab('dosage-forms');
+      else if (activeSubTab === 'catalogue:units' && isModuleEnabled('catalogue:units')) setCurrentSubTab('units');
+      else if (isModuleEnabled('catalogue:products') || isModuleEnabled('catalogue')) setCurrentSubTab('products');
+      else setCurrentSubTab(firstAvailableSubTab);
+    } else {
+      const currentModuleId = `catalogue:${currentSubTab}`;
+      if (!isModuleEnabled(currentModuleId) && !isModuleEnabled(currentSubTab)) {
+        setCurrentSubTab(firstAvailableSubTab);
+      }
     }
-  }, [activeSubTab]);
+  }, [activeSubTab, isModuleEnabled, currentSubTab, firstAvailableSubTab]);
 
-  const handleTabSwitch = (tab: 'products' | 'categories' | 'dosage-forms' | 'predictor-rules' | 'units') => {
+  const handleTabSwitch = (tab: 'products' | 'categories' | 'dosage-forms' | 'units') => {
     setCurrentSubTab(tab);
     if (onSelectSubTab) {
       if (tab === 'categories') onSelectSubTab('catalogue:categories');
       else if (tab === 'dosage-forms') onSelectSubTab('catalogue:dosage-forms');
-      else if (tab === 'predictor-rules') onSelectSubTab('catalogue:predictor-rules');
       else if (tab === 'units') onSelectSubTab('catalogue:units');
       else onSelectSubTab('catalogue');
     }
@@ -73,6 +95,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
   const [selectedPrescriptionFilter, setSelectedPrescriptionFilter] = useState('ALL');
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // Packaging & Pricing Predictor State for Product Modal
@@ -154,6 +177,12 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
     return matchesSearch && matchesCategory;
   });
 
+  const {
+    currentPage: unitsPage,
+    setCurrentPage: setUnitsPage,
+    paginatedItems: paginatedUnits,
+  } = usePagination(filteredUnits, 10, [unitSearch, selectedUnitCategory]);
+
   const isAllUnitsSelected = filteredUnits.length > 0 && filteredUnits.every(u => selectedUnitIds.includes(u.id));
 
   const toggleSelectAllUnits = () => {
@@ -193,14 +222,14 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
   // Intelligent Price Predictor from Piece Price
   const predictFromPiecePrice = (pPrice: number, pCost: number) => {
     const rawStripPrice = pPrice * stripMultiplier;
-    const sPrice = Math.round(rawStripPrice * (1 - (bulkDiscountPercent * 0.5) / 100));
+    const sPrice = Math.round(rawStripPrice * (1 - (bulkDiscountPercent * 0.5) / 100) * 100) / 100;
     setStripPrice(sPrice);
-    setStripCost(pCost * stripMultiplier);
+    setStripCost(Math.round(pCost * stripMultiplier * 100) / 100);
 
     const rawPackPrice = pPrice * packMultiplier;
-    const pkPrice = Math.round(rawPackPrice * (1 - bulkDiscountPercent / 100));
+    const pkPrice = Math.round(rawPackPrice * (1 - bulkDiscountPercent / 100) * 100) / 100;
     setPackPrice(pkPrice);
-    setPackCost(pCost * packMultiplier);
+    setPackCost(Math.round(pCost * packMultiplier * 100) / 100);
   };
 
   // Intelligent Price Decomposition from Pack Price
@@ -209,9 +238,9 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
     const baseP = pkPrice / packMultiplier;
     const singleP = Math.round(baseP * 1.15 * 100) / 100;
     setPiecePrice(singleP);
-    setPieceCost(Math.round((pkCost / packMultiplier) * 100) / 100);
+    setPieceCost(Math.round((pkCost / packMultiplier) * 10000) / 10000);
 
-    const sPrice = Math.round((pkPrice / (packMultiplier / stripMultiplier)) * 1.05);
+    const sPrice = Math.round((pkPrice / (packMultiplier / stripMultiplier)) * 1.05 * 100) / 100;
     setStripPrice(sPrice);
     setStripCost(Math.round((pkCost / (packMultiplier / stripMultiplier)) * 100) / 100);
   };
@@ -337,6 +366,41 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
     return matchSearch && matchCat && matchStatus && matchPOM;
   });
 
+  const {
+    currentPage: productsPage,
+    setCurrentPage: setProductsPage,
+    paginatedItems: paginatedProducts,
+  } = usePagination(filteredProducts, 10, [searchTerm, selectedCat, selectedStatus, selectedPrescriptionFilter]);
+
+  const {
+    currentPage: categoriesPage,
+    setCurrentPage: setCategoriesPage,
+    paginatedItems: paginatedCategories,
+  } = usePagination(categories, 10);
+
+  // Collapsible Packaging Tiers State
+  const [expandedProductTiers, setExpandedProductTiers] = useState<Record<string, boolean>>({});
+  const [allTiersExpanded, setAllTiersExpanded] = useState(false);
+
+  const toggleProductTiers = (productId: string) => {
+    setExpandedProductTiers(prev => ({
+      ...prev,
+      [productId]: !prev[productId]
+    }));
+  };
+
+  const toggleAllTiers = () => {
+    const next = !allTiersExpanded;
+    setAllTiersExpanded(next);
+    if (next) {
+      const all: Record<string, boolean> = {};
+      paginatedProducts.forEach(p => { all[p.id] = true; });
+      setExpandedProductTiers(all);
+    } else {
+      setExpandedProductTiers({});
+    }
+  };
+
   const isAllSelected = filteredProducts.length > 0 && selectedProductIds.length === filteredProducts.length;
   const isSomeSelected = selectedProductIds.length > 0 && !isAllSelected;
 
@@ -354,10 +418,39 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
     );
   };
 
+  const handleDeleteProduct = async (product: Product) => {
+    const label = [product.brandName, product.strength].filter(Boolean).join(' ');
+    const ok = await confirmDialog({
+      title: 'Delete Medication',
+      message: `Are you sure you want to permanently delete "${label}"? This will also remove all associated inventory batches and stock movements.`,
+      variant: 'danger',
+      confirmText: 'Delete Permanently',
+      cancelText: 'Cancel'
+    });
+    if (!ok) return;
+    deleteProduct(product.id);
+    toast.success(`"${product.brandName}" removed from the formulary.`, 'Product Deleted');
+  };
+
+  const handleBulkDeleteProducts = async () => {
+    if (selectedProductIds.length === 0) return;
+    const ok = await confirmDialog({
+      title: `Delete ${selectedProductIds.length} Medication${selectedProductIds.length > 1 ? 's' : ''}`,
+      message: `You are about to permanently delete ${selectedProductIds.length} medication formulation${selectedProductIds.length > 1 ? 's' : ''} from the product formulary. All associated inventory batches and stock movement records will also be removed. This cannot be undone.`,
+      variant: 'danger',
+      confirmText: `Delete ${selectedProductIds.length} Product${selectedProductIds.length > 1 ? 's' : ''}`,
+      cancelText: 'Cancel'
+    });
+    if (!ok) return;
+    bulkDeleteProducts(selectedProductIds);
+    toast.success(`${selectedProductIds.length} medication formulation${selectedProductIds.length > 1 ? 's' : ''} deleted from the formulary.`, 'Bulk Delete Complete');
+    setSelectedProductIds([]);
+  };
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.brandName || !formData.genericName) {
-      alert('Please fill out medication name and generic details.');
+      toast.warning('Please fill out medication name and generic details.', 'Required Fields');
       return;
     }
 
@@ -399,6 +492,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
         unitCost: pieceCost,
         sellingPrice: piecePrice
       });
+      toast.success(`Updated "${formData.brandName}" formulation & shelf prices!`, 'Medication Updated');
       setEditingProduct(null);
     } else {
       addProduct({
@@ -413,6 +507,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
         availableQuantity: 0,
         status: 'OUT_OF_STOCK'
       });
+      toast.success(`Added "${formData.brandName}" to formulary catalogue!`, 'Medication Added');
     }
 
     setShowAddModal(false);
@@ -482,21 +577,36 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
   const handleSaveCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!catFormData.name || !catFormData.code) {
-      alert('Please provide category name and short code.');
+      toast.warning('Please provide category name and short code.', 'Validation Required');
       return;
     }
     if (editingCat) {
       updateCategory(editingCat.id, catFormData);
+      toast.success(`Category "${catFormData.name}" updated.`, 'Category Updated');
     } else {
       addCategory(catFormData);
+      toast.success(`Category "${catFormData.name}" created.`, 'Category Created');
     }
     setShowCatModal(false);
   };
 
-  const handleDeleteCategory = (cat: Category) => {
+  const handleDeleteCategory = async (cat: Category) => {
+    const confirmed = await confirmDialog({
+      title: 'Delete Category',
+      message: `Are you sure you want to delete category "${cat.name}"?`,
+      confirmText: 'Delete Category',
+      variant: 'danger'
+    });
+    if (!confirmed) return;
     const success = deleteCategory(cat.id);
     if (!success) {
-      alert(`Cannot delete "${cat.name}": There are active medications currently categorized under it. Please reassign those medications first.`);
+      alertDialog({
+        title: 'Cannot Delete Category',
+        message: `Cannot delete "${cat.name}": There are active medications currently categorized under it. Please reassign those medications first.`,
+        variant: 'warning'
+      });
+    } else {
+      toast.success(`Category "${cat.name}" deleted.`, 'Category Deleted');
     }
   };
 
@@ -533,7 +643,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
   const handleSaveDosageForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!dosageFormData.formName) {
-      alert('Please enter dosage formulation name.');
+      toast.warning('Please enter dosage formulation name.', 'Validation Required');
       return;
     }
     const cleanPreset: DosagePreset = {
@@ -549,16 +659,31 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
 
     if (isNewDosageForm) {
       addDosagePreset(dosageFormData.formName, cleanPreset);
+      toast.success(`Dosage formulation "${dosageFormData.formName}" registered.`, 'Formulation Registered');
     } else if (editingDosageKey) {
       updateDosagePreset(editingDosageKey, cleanPreset);
+      toast.success(`Dosage formulation "${dosageFormData.formName}" updated.`, 'Formulation Updated');
     }
     setShowDosageModal(false);
   };
 
-  const handleDeleteDosageForm = (formName: string) => {
+  const handleDeleteDosageForm = async (formName: string) => {
+    const confirmed = await confirmDialog({
+      title: 'Delete Dosage Formulation',
+      message: `Are you sure you want to delete formulation "${formName}"?`,
+      confirmText: 'Delete Formulation',
+      variant: 'danger'
+    });
+    if (!confirmed) return;
     const success = deleteDosagePreset(formName);
     if (!success) {
-      alert(`Cannot delete formulation "${formName}": Active medications in catalogue are registered with this dosage form.`);
+      alertDialog({
+        title: 'Cannot Delete Formulation',
+        message: `Cannot delete formulation "${formName}": Active medications in catalogue are registered with this dosage form.`,
+        variant: 'warning'
+      });
+    } else {
+      toast.success(`Dosage formulation "${formName}" removed.`, 'Formulation Removed');
     }
   };
 
@@ -566,10 +691,11 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
   const handleSaveUnitType = (e: React.FormEvent) => {
     e.preventDefault();
     if (!unitFormData.name) {
-      alert('Please enter unit name.');
+      toast.warning('Please enter unit name.', 'Validation Required');
       return;
     }
     addUnitType(unitFormData);
+    toast.success(`Unit type "${unitFormData.name}" added.`, 'Unit Created');
     setShowUnitModal(false);
     setUnitFormData({ name: '', plural: '', category: 'DISPENSING_BASE', description: '' });
   };
@@ -581,23 +707,36 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
         <div>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center space-x-2">
             <Pill className="w-5 h-5 text-brand-600" />
-            <span>Pharmaceutical Catalogue & Multi-Unit Master</span>
+            <span>Medications & Shelf Pricing</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Intelligent pack/box pricing, therapeutic classifications, clinical dosage rules, and packaging unit prediction.
+            Manage your pharmacy's medicine formulary, packaging tiers, retail prices, and dosage forms.
           </p>
         </div>
 
         <div className="flex items-center space-x-2">
           {currentSubTab === 'products' && canCreate && (
-            <button
-              id="add-medicine-btn"
-              onClick={openAddModal}
-              className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 flex items-center space-x-1.5 transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Medication</span>
-            </button>
+            <>
+              <button
+                id="import-csv-btn"
+                type="button"
+                onClick={() => setShowImportModal(true)}
+                className="px-3.5 py-2 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-sm"
+                title="Bulk onboard medications using a CSV template"
+              >
+                <Upload className="w-4 h-4 text-brand-600" />
+                <span>Import Products (CSV)</span>
+              </button>
+
+              <button
+                id="add-medicine-btn"
+                onClick={openAddModal}
+                className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 flex items-center space-x-1.5 transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Medication</span>
+              </button>
+            </>
           )}
 
           {currentSubTab === 'categories' && canCreate && (
@@ -622,7 +761,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
             </button>
           )}
 
-          {(currentSubTab === 'predictor-rules' || currentSubTab === 'units') && canCreate && (
+          {currentSubTab === 'units' && canCreate && (
             <button
               id="add-unit-type-btn"
               onClick={() => setShowUnitModal(true)}
@@ -637,82 +776,77 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
 
       {/* Synchronized Sub-Navigation Tabs */}
       <div className="flex items-center space-x-1 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 overflow-x-auto text-xs font-semibold">
-        <button
-          id="subtab-all-products"
-          onClick={() => handleTabSwitch('products')}
-          className={`px-3.5 py-2 rounded-lg flex items-center space-x-2 transition whitespace-nowrap ${
-            currentSubTab === 'products'
-              ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-700/60'
-          }`}
-        >
-          <span>📋</span>
-          <span>All Medications</span>
-          <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded-full font-mono">
-            {products.length}
-          </span>
-        </button>
+        {(isModuleEnabled('catalogue:products') || isModuleEnabled('catalogue')) && (
+          <button
+            id="subtab-all-products"
+            onClick={() => handleTabSwitch('products')}
+            className={`px-3.5 py-2 rounded-lg flex items-center space-x-2 transition whitespace-nowrap ${
+              currentSubTab === 'products'
+                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-700/60'
+            }`}
+          >
+            <span>📋</span>
+            <span>All Medications</span>
+            <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded-full font-mono">
+              {products.length}
+            </span>
+          </button>
+        )}
 
-        <button
-          id="subtab-categories"
-          onClick={() => handleTabSwitch('categories')}
-          className={`px-3.5 py-2 rounded-lg flex items-center space-x-2 transition whitespace-nowrap ${
-            currentSubTab === 'categories'
-              ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-700/60'
-          }`}
-        >
-          <span>🏷️</span>
-          <span>Therapeutic Categories</span>
-          <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded-full font-mono">
-            {categories.length}
-          </span>
-        </button>
+        {isModuleEnabled('catalogue:categories') && (
+          <button
+            id="subtab-categories"
+            onClick={() => handleTabSwitch('categories')}
+            className={`px-3.5 py-2 rounded-lg flex items-center space-x-2 transition whitespace-nowrap ${
+              currentSubTab === 'categories'
+                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-700/60'
+            }`}
+          >
+            <span>🏷️</span>
+            <span>Therapeutic Categories</span>
+            <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded-full font-mono">
+              {categories.length}
+            </span>
+          </button>
+        )}
 
-        <button
-          id="subtab-dosage-forms"
-          onClick={() => handleTabSwitch('dosage-forms')}
-          className={`px-3.5 py-2 rounded-lg flex items-center space-x-2 transition whitespace-nowrap ${
-            currentSubTab === 'dosage-forms'
-              ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-700/60'
-          }`}
-        >
-          <span>🧪</span>
-          <span>Dosage Forms & Clinical Rules</span>
-          <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded-full font-mono">
-            {Object.keys(dosagePresets).length}
-          </span>
-        </button>
+        {isModuleEnabled('catalogue:dosage-forms') && (
+          <button
+            id="subtab-dosage-forms"
+            onClick={() => handleTabSwitch('dosage-forms')}
+            className={`px-3.5 py-2 rounded-lg flex items-center space-x-2 transition whitespace-nowrap ${
+              currentSubTab === 'dosage-forms'
+                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-700/60'
+            }`}
+          >
+            <span>🧪</span>
+            <span>Dosage Forms & Clinical Rules</span>
+            <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded-full font-mono">
+              {Object.keys(dosagePresets).length}
+            </span>
+          </button>
+        )}
 
-        <button
-          id="subtab-predictor-rules"
-          onClick={() => handleTabSwitch('predictor-rules')}
-          className={`px-3.5 py-2 rounded-lg flex items-center space-x-2 transition whitespace-nowrap ${
-            currentSubTab === 'predictor-rules'
-              ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-700/60'
-          }`}
-        >
-          <span>⚖️</span>
-          <span>Predictor Rules & Models</span>
-        </button>
-
-        <button
-          id="subtab-units"
-          onClick={() => handleTabSwitch('units')}
-          className={`px-3.5 py-2 rounded-lg flex items-center space-x-2 transition whitespace-nowrap ${
-            currentSubTab === 'units'
-              ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-700/60'
-          }`}
-        >
-          <span>📦</span>
-          <span>Unit Types & Packaging</span>
-          <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded-full font-mono">
-            {unitTypes.length}
-          </span>
-        </button>
+        {isModuleEnabled('catalogue:units') && (
+          <button
+            id="subtab-units"
+            onClick={() => handleTabSwitch('units')}
+            className={`px-3.5 py-2 rounded-lg flex items-center space-x-2 transition whitespace-nowrap ${
+              currentSubTab === 'units'
+                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-700/60'
+            }`}
+          >
+            <span>📦</span>
+            <span>Unit Types & Packaging</span>
+            <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded-full font-mono">
+              {unitTypes.length}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* ========================================================================= */}
@@ -788,8 +922,21 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                       </div>
                     </th>
                     <th className="p-3">Medicine & Generic</th>
+                    <th className="p-3">SKU & Barcode</th>
                     <th className="p-3">Therapeutic Class</th>
-                    <th className="p-3">Packaging Hierarchy & Prices</th>
+                    <th className="p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="whitespace-nowrap">Packaging Hierarchy & Prices</span>
+                        <button
+                          type="button"
+                          onClick={toggleAllTiers}
+                          className="text-[9px] px-1.5 py-0.5 rounded font-medium normal-case text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition cursor-pointer"
+                          title={allTiersExpanded ? 'Collapse all packaging tiers' : 'Expand all packaging tiers'}
+                        >
+                          {allTiersExpanded ? 'Collapse all' : 'Expand all'}
+                        </button>
+                      </div>
+                    </th>
                     <th className="p-3">Base Unit Cost</th>
                     <th className="p-3">Base Unit Price</th>
                     <th className="p-3">Gross Margin</th>
@@ -799,7 +946,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredProducts.map((prod, index) => {
+                  {paginatedProducts.map((prod, index) => {
                     const isSelected = selectedProductIds.includes(prod.id);
                     const margin = prod.sellingPrice > 0 ? ((prod.sellingPrice - prod.unitCost) / prod.sellingPrice) * 100 : 0;
                     return (
@@ -819,74 +966,155 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                               onChange={() => toggleSelectProduct(prod.id)}
                               className="rounded border-slate-300 dark:border-slate-600 text-brand-600 focus:ring-brand-500 cursor-pointer"
                             />
-                            <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 font-bold">
-                              {index + 1}
+                            <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 w-4 text-right">
+                              {(productsPage - 1) * 10 + index + 1}
                             </span>
                           </div>
                         </td>
                         <td className="p-3">
-                          <p className="font-bold text-slate-900 dark:text-slate-100">{prod.brandName}</p>
-                          <p className="text-[11px] text-slate-500">{prod.genericName} • {prod.strength}</p>
-                          <div className="flex items-center space-x-2 pt-0.5">
-                            <span className="font-mono text-[9px] text-slate-400">{prod.sku}</span>
-                            <span className="text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.2 rounded font-medium">
-                              {prod.dosageForm}
-                            </span>
-                            {prod.isPrescriptionRequired && (
-                              <span className="text-[9px] bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 px-1.5 py-0.2 rounded font-bold">
-                                POM
+                          <div className="font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
+                            <span>{prod.brandName}</span>
+                            {prod.requiresColdChain && (
+                              <span title="Requires Cold-Chain Refrigeration (2°C - 8°C)" className="inline-flex items-center text-blue-500">
+                                <Snowflake className="w-3.5 h-3.5 animate-pulse" />
                               </span>
                             )}
                           </div>
-                        </td>
-                        <td className="p-3 text-slate-600 dark:text-slate-300">{prod.categoryName}</td>
-                        <td className="p-3">
-                          <div className="flex flex-wrap gap-1.5 max-w-sm">
-                            {prod.packagingTiers && prod.packagingTiers.length > 0 ? (
-                              prod.packagingTiers.map((tier, i) => (
-                                <span 
-                                  key={i} 
-                                  className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-semibold"
-                                >
-                                  <strong className="text-slate-800 dark:text-slate-200">{tier.unitName}</strong> ({tier.multiplier}): <span className="text-brand-600 dark:text-brand-400 font-bold">{formatCurrency(tier.sellingPrice)}</span>
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-slate-400 text-[11px]">Standard Single Pack</span>
-                            )}
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                            {prod.genericName}
                           </div>
                         </td>
-                        <td className="p-3 font-mono font-medium">{formatCurrency(prod.unitCost)}</td>
-                        <td className="p-3 font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(prod.sellingPrice)}</td>
                         <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
-                            margin < 0 ? 'bg-rose-100 text-rose-800' :
-                            margin < 15 ? 'bg-amber-100 text-amber-800' :
-                            'bg-emerald-100 text-emerald-800'
-                          }`}>
+                          <div className="font-mono text-[11px] text-slate-600 dark:text-slate-300 font-semibold">
+                            {prod.sku}
+                          </div>
+                          <div className="font-mono text-[10px] text-slate-400">
+                            {prod.barcode || '—'}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                            {categories.find(c => c.id === prod.categoryId)?.name || 'General'}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          {(() => {
+                            const isExpanded = !!expandedProductTiers[prod.id];
+                            const distinctTiers = (prod.packagingTiers || []).filter((tier, idx, arr) => {
+                              if (tier.multiplier === 1 && tier.unitName?.toLowerCase() === (prod.baseUnit || '').toLowerCase()) {
+                                return false;
+                              }
+                              return arr.findIndex(t => t.unitName?.toLowerCase() === tier.unitName?.toLowerCase() && t.multiplier === tier.multiplier) === idx;
+                            });
+
+                            return (
+                              <div className="flex flex-col gap-1.5 min-w-[190px] max-w-xs">
+                                {/* Base Unit & Collapsible Toggle Row */}
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span 
+                                    className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80 shadow-2xs"
+                                    title={`Base dispensing unit: 1 ${prod.baseUnit || 'Unit'} = ${formatCurrency(prod.sellingPrice)}`}
+                                  >
+                                    <Tag className="w-2.5 h-2.5 mr-1 text-emerald-500 shrink-0" />
+                                    <span>1 {prod.baseUnit || 'Tab'} = {formatCurrency(prod.sellingPrice)}</span>
+                                  </span>
+
+                                  {distinctTiers.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleProductTiers(prod.id);
+                                      }}
+                                      className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition-all shadow-2xs cursor-pointer ${
+                                        isExpanded
+                                          ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-blue-500/20'
+                                          : 'bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/80 dark:text-blue-300 border-blue-200 dark:border-blue-800/70'
+                                      }`}
+                                      title={
+                                        isExpanded 
+                                          ? 'Click to collapse packaging tiers' 
+                                          : `Click to reveal ${distinctTiers.length} tier${distinctTiers.length > 1 ? 's' : ''}:\n` + distinctTiers.map(t => `• 1 ${t.unitName} (${t.multiplier}x) = ${formatCurrency(t.sellingPrice)}`).join('\n')
+                                      }
+                                    >
+                                      <Layers className="w-2.5 h-2.5 shrink-0" />
+                                      <span>{isExpanded ? 'Hide' : `+${distinctTiers.length} Tier${distinctTiers.length > 1 ? 's' : ''}`}</span>
+                                      {isExpanded ? (
+                                        <ChevronUp className="w-2.5 h-2.5 ml-0.5 shrink-0" />
+                                      ) : (
+                                        <ChevronDown className="w-2.5 h-2.5 ml-0.5 shrink-0" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Collapsible / Reveal for Multi-Pack Tiers */}
+                                {isExpanded && distinctTiers.length > 0 && (
+                                  <div className="flex flex-col gap-1 p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 animate-in fade-in slide-in-from-top-1 duration-150 shadow-xs">
+                                    {distinctTiers.map((tier, i) => (
+                                      <div 
+                                        key={i} 
+                                        className="flex items-center justify-between text-[10px] font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-200/60 dark:border-slate-700/60"
+                                      >
+                                        <span className="font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                                          <span>1 {tier.unitName}</span>
+                                          <span className="font-mono text-[9px] text-slate-400 dark:text-slate-500">({tier.multiplier}x)</span>
+                                        </span>
+                                        <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                          {formatCurrency(tier.sellingPrice)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </td>
+                        <td className="p-3 font-mono font-medium text-slate-600 dark:text-slate-300">
+                          {formatCurrency(prod.unitCost)}
+                        </td>
+                        <td className="p-3 font-mono font-bold text-slate-900 dark:text-white">
+                          {formatCurrency(prod.sellingPrice)}
+                        </td>
+                        <td className="p-3 font-mono font-semibold">
+                          <span className={margin > 25 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
                             {margin.toFixed(1)}%
                           </span>
                         </td>
-                        <td className="p-3 font-bold text-slate-900 dark:text-slate-100">
-                          {prod.availableQuantity} {prod.baseUnit || 'units'}
+                        <td className="p-3">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
+                            {prod.stockOnHand ?? prod.totalQuantity ?? prod.availableQuantity ?? 0} {prod.baseUnit || 'Tab'}s
+                          </span>
                         </td>
                         <td className="p-3">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            prod.status === 'IN_STOCK' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
-                            prod.status === 'LOW_STOCK' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
-                            'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                            prod.status === 'IN_STOCK' 
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                              : prod.status === 'LOW_STOCK'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                           }`}>
                             {prod.status.replace('_', ' ')}
                           </span>
                         </td>
                         <td className="p-3 text-right">
-                          <button
-                            onClick={() => openEdit(prod)}
-                            className="p-1.5 text-slate-600 hover:text-brand-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
-                            title="Edit medicine and pricing tiers"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center justify-end space-x-1">
+                            <button
+                              onClick={() => openEdit(prod)}
+                              className="p-1.5 text-slate-600 hover:text-brand-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                              title="Edit medicine and pricing tiers"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteProduct(prod)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition-colors"
+                              title="Delete this medication from the formulary"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -894,6 +1122,14 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                 </tbody>
               </table>
             </div>
+
+            <Pagination
+              currentPage={productsPage}
+              totalItems={filteredProducts.length}
+              pageSize={10}
+              onPageChange={setProductsPage}
+              itemName="medicines"
+            />
           </div>
 
           {/* Floating Bulk Action Bar */}
@@ -906,7 +1142,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                 label: 'Export CSV',
                 icon: <Download className="w-3.5 h-3.5" />,
                 onClick: () => {
-                  alert(`Exporting ${selectedProductIds.length} selected medicines to CSV.`);
+                  toast.info(`Exporting ${selectedProductIds.length} selected medicines to CSV...`, 'CSV Export');
                 }
               },
               {
@@ -915,6 +1151,12 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                 onClick: () => {
                   window.print();
                 }
+              },
+              {
+                label: `Delete ${selectedProductIds.length} Product${selectedProductIds.length !== 1 ? 's' : ''}`,
+                icon: <Trash2 className="w-3.5 h-3.5" />,
+                onClick: handleBulkDeleteProducts,
+                variant: 'danger'
               }
             ]}
           />
@@ -944,7 +1186,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
 
           {/* Categories Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {categories.map(cat => {
+            {paginatedCategories.map(cat => {
               const count = products.filter(p => p.categoryId === cat.id).length;
               return (
                 <div 
@@ -968,17 +1210,17 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-end space-x-2 pt-4 mt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-end space-x-2 pt-4 border-t border-slate-100 dark:border-slate-800 mt-4">
                     <button
                       onClick={() => handleOpenEditCategory(cat)}
-                      className="px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-medium flex items-center space-x-1"
+                      className="px-2.5 py-1 text-xs text-slate-600 dark:text-slate-400 hover:text-brand-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-medium flex items-center space-x-1"
                     >
                       <Edit2 className="w-3 h-3" />
                       <span>Edit</span>
                     </button>
                     <button
                       onClick={() => handleDeleteCategory(cat)}
-                      className="px-2.5 py-1 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded font-medium flex items-center space-x-1"
+                      className="px-2.5 py-1 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded font-medium flex items-center space-x-1"
                       title={count > 0 ? "Cannot delete category with active products" : "Delete category"}
                     >
                       <Trash2 className="w-3 h-3" />
@@ -988,6 +1230,16 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                 </div>
               );
             })}
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <Pagination
+              currentPage={categoriesPage}
+              totalItems={categories.length}
+              pageSize={10}
+              onPageChange={setCategoriesPage}
+              itemName="categories"
+            />
           </div>
         </div>
       )}
@@ -1085,184 +1337,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
       )}
 
       {/* ========================================================================= */}
-      {/* SUB-VIEW 4: PREDICTOR UNIT RULES & PACKAGING HIERARCHY (NO PRICES) */}
-      {/* ========================================================================= */}
-      {currentSubTab === 'predictor-rules' && (
-        <div className="space-y-4 animate-in fade-in duration-150">
-          {/* Explanatory Caption Card */}
-          <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-slate-800/80 dark:to-purple-950/30 rounded-2xl border border-purple-200 dark:border-purple-900/60 shadow-sm flex items-start space-x-3">
-            <div className="p-2.5 bg-purple-600 text-white rounded-xl shadow-md shrink-0">
-              <Layers className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-purple-950 dark:text-purple-200">
-                Packaging Hierarchy Multipliers & Predictive Ratio Models (No Prices)
-              </h3>
-              <p className="text-xs text-purple-800/80 dark:text-purple-300/80 mt-0.5 leading-relaxed">
-                Configure packaging hierarchy ratios and bidirectional volume multipliers. 
-                When registering medications, the Intelligent Predictor uses these unit relationships (e.g. 1 Box = 10 Strips = 100 Tablets; 1 Canister = 200 Actuations) 
-                to automatically decompose bulk prices into loose unit prices and calculate profit margins — without you having to enter prices for each rule. 
-                Existing rules are saved permanently so any cashier or inventory manager can leverage them across any medicine.
-              </p>
-            </div>
-          </div>
-
-          {/* Global Bulk Incentive / Volume Discount Setting */}
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <h4 className="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
-                <Sliders className="w-4 h-4 text-brand-600" />
-                <span>Global Pack Volume Discount Incentive (Default Prediction Factor)</span>
-              </h4>
-              <p className="text-[11px] text-slate-500">
-                Discount applied automatically when predicting full pack prices from individual loose units to incentivize bulk customer purchases.
-              </p>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              {[5, 8, 10, 15].map(pct => (
-                <button
-                  key={pct}
-                  onClick={() => setGlobalBulkDiscountPercent(pct)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    globalBulkDiscountPercent === pct
-                      ? 'bg-brand-600 text-white shadow-sm'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
-                  }`}
-                >
-                  {pct}%
-                </button>
-              ))}
-              <div className="flex items-center space-x-1 pl-2 border-l border-slate-200 dark:border-slate-700">
-                <input
-                  type="number"
-                  min="0"
-                  max="40"
-                  value={globalBulkDiscountPercent}
-                  onChange={e => setGlobalBulkDiscountPercent(parseFloat(e.target.value) || 0)}
-                  className="w-14 p-1.5 text-center font-bold border rounded bg-slate-50 dark:bg-slate-800 text-xs"
-                />
-                <span className="text-xs text-slate-500">%</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Reusable Packaging Models Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-              <div className="flex items-center space-x-2">
-                <Package className="w-4 h-4 text-brand-600" />
-                <h5 className="font-bold text-xs">Solid Oral Strip Model</h5>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                1 Pack = 10 Strips = 100 Tablets / Capsules. Loose pieces carry a 15% dispensing overhead.
-              </p>
-              <div className="text-[10px] font-mono bg-slate-50 dark:bg-slate-800 p-2 rounded border">
-                Strip = 10x Base • Pack = 100x Base
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-              <div className="flex items-center space-x-2">
-                <Droplets className="w-4 h-4 text-brand-600" />
-                <h5 className="font-bold text-xs">Liquid Volume Model</h5>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Dispensed by volumetric mL (e.g. 5mL pediatric dose) or entire amber Bottle (100mL standard).
-              </p>
-              <div className="text-[10px] font-mono bg-slate-50 dark:bg-slate-800 p-2 rounded border">
-                Bottle = 100x Base mL (Strip Disabled)
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-              <div className="flex items-center space-x-2">
-                <Syringe className="w-4 h-4 text-brand-600" />
-                <h5 className="font-bold text-xs">Parenteral Injectable Model</h5>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Dispensed per single Ampoule or sterile Rubber-stoppered Vial. Wholesale box contains 10 units.
-              </p>
-              <div className="text-[10px] font-mono bg-slate-50 dark:bg-slate-800 p-2 rounded border">
-                Box = 10x Base Ampoule / Vial
-              </div>
-            </div>
-          </div>
-
-          {/* Unit Directory Registry */}
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
-              <div>
-                <h4 className="font-bold text-xs text-slate-900 dark:text-white">
-                  Active Clinical Packaging & Dispensing Units Directory
-                </h4>
-                <p className="text-[11px] text-slate-500">
-                  Registered unit types available in prescription cart items, inventory ledgers, and packaging hierarchies.
-                </p>
-              </div>
-
-              {/* Category Filter */}
-              <div className="flex items-center space-x-1 text-xs">
-                {(['ALL', 'DISPENSING_BASE', 'SUB_CONTAINER', 'CONTAINER'] as const).map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setUnitCategoryFilter(cat)}
-                    className={`px-2.5 py-1 rounded-lg transition ${
-                      unitCategoryFilter === cat
-                        ? 'bg-brand-600 text-white font-bold'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                    }`}
-                  >
-                    {cat === 'ALL' ? 'All' : cat === 'DISPENSING_BASE' ? 'Base Units' : cat === 'SUB_CONTAINER' ? 'Sub-Containers' : 'Outer Packs'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 pt-1">
-              {unitTypes
-                .filter(u => unitCategoryFilter === 'ALL' || u.category === unitCategoryFilter)
-                .map(unit => (
-                  <div 
-                    key={unit.id}
-                    className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-2"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs text-slate-900 dark:text-white">{unit.name}</span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${
-                          unit.category === 'DISPENSING_BASE' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
-                          unit.category === 'SUB_CONTAINER' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300' :
-                          'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                        }`}>
-                          {unit.category === 'DISPENSING_BASE' ? 'Base Unit' : unit.category === 'SUB_CONTAINER' ? 'Sub-Pack' : 'Outer Pack'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">
-                        {unit.description || 'Clinical packaging unit.'}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-[10px] text-slate-400">
-                      <span>{unit.isDefault ? 'Core System Unit' : 'Custom Added'}</span>
-                      {!unit.isDefault && (
-                        <button
-                          onClick={() => deleteUnitType(unit.id)}
-                          className="text-rose-600 hover:text-rose-800 font-semibold"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* SUB-VIEW 5: UNIT TYPES & PACKAGING REGISTRY */}
+      {/* SUB-VIEW 4: UNIT TYPES & PACKAGING REGISTRY */}
       {/* ========================================================================= */}
       {currentSubTab === 'units' && (
         <div className="space-y-4 animate-in fade-in duration-150">
@@ -1459,7 +1534,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                         </td>
                       </tr>
                     ) : (
-                      filteredUnits.map((unit, index) => {
+                      paginatedUnits.map((unit, index) => {
                         const isSelected = selectedUnitIds.includes(unit.id);
                         return (
                           <tr 
@@ -1479,7 +1554,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                                   className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-700 cursor-pointer"
                                 />
                                 <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 w-5 text-right">
-                                  {index + 1}
+                                  {(unitsPage - 1) * 10 + index + 1}
                                 </span>
                               </div>
                             </td>
@@ -1525,6 +1600,14 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                   </tbody>
                 </table>
               </div>
+
+              <Pagination
+                currentPage={unitsPage}
+                totalItems={filteredUnits.length}
+                pageSize={10}
+                onPageChange={setUnitsPage}
+                itemName="packaging units"
+              />
 
               <FloatingBulkActionBar
                 selectedCount={selectedUnitIds.length}
@@ -1612,10 +1695,11 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
           <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
-                <h3 className="font-bold text-base text-slate-900 dark:text-white">
-                  {editingProduct ? 'Edit Pharmaceutical & Pricing Model' : 'Register New Pharmaceutical Formulation'}
+                <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center space-x-2">
+                  <Pill className="w-5 h-5 text-brand-600" />
+                  <span>{editingProduct ? 'Edit Medicine Profile & Pricing' : 'Add New Medicine'}</span>
                 </h3>
-                <p className="text-xs text-slate-500">Intelligent pack/box pricing with volume incentive prediction</p>
+                <p className="text-xs text-slate-500">Register drug details, packaging tiers, and default shelf prices for dispensary sales.</p>
               </div>
               <button type="button" onClick={() => setShowAddModal(false)}><X className="w-4 h-4" /></button>
             </div>
@@ -1624,10 +1708,10 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
             <div className="p-3 bg-brand-50/60 dark:bg-brand-950/40 border border-brand-100 dark:border-brand-900/50 rounded-xl space-y-1">
               <div className="flex items-center space-x-1.5 text-xs font-bold text-brand-900 dark:text-brand-300">
                 <Info className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
-                <span>Formulation & Multiplier Architecture</span>
+                <span>Packaging & Shelf Pricing Setup</span>
               </div>
               <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                Every medication is configured with an <strong>Atomic Base Unit</strong> (e.g. Tablet or mL) and <strong>Commercial Packaging Multipliers</strong> (Strips and Packs). This enables cashiers to sell single tablets, full strips, or wholesale boxes while GreenLifeAI automatically calculates volume discounts and maintains exact inventory balance.
+                Set your <strong>Base Dispensing Unit</strong> (e.g. Tablet or mL), and configure any <strong>Wholesale Boxes</strong> or <strong>Blister Strips</strong>. Cashiers at POS can sell by box, strip, or single piece with automatic inventory deductions.
               </p>
             </div>
 
@@ -1752,363 +1836,331 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
               </div>
             </div>
 
-            {/* SECTION 2: SMART AUTO-SELECT & PACKAGING HIERARCHY */}
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
-              <div className="flex items-center justify-between">
+            {/* SECTION 2: PACKAGING TIERS & DEFAULT SHELF PRICING */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">
                 <div className="flex items-center space-x-2">
-                  <Layers className="w-4 h-4 text-brand-600" />
-                  <span className="font-bold text-xs text-slate-800 dark:text-slate-100">
-                    2. Packaging Hierarchy & Multipliers
-                  </span>
-                </div>
-                <span className="text-[11px] text-slate-500">Atomic base unit used for ledger accounting</span>
-              </div>
-
-              {/* Intelligent Suggestion Banner with Manual Override Freedom */}
-              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/70 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1.5 text-xs font-semibold text-emerald-900 dark:text-emerald-200">
-                    <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span>
-                      Smart Auto-Select: Base unit set to <strong>{baseUnit}</strong> for <strong>{formData.dosageForm}</strong>
-                    </span>
+                  <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <div>
+                    <h4 className="font-bold text-xs text-slate-900 dark:text-white">
+                      2. Packaging Tiers & Shelf Pricing ({currentCurrency.code})
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Configure how this medicine is packaged and set default wholesale costs and retail shelf prices.
+                    </p>
                   </div>
-                  <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-full font-medium border border-emerald-200 dark:border-emerald-800">
-                    100% Manual Override Enabled
-                  </span>
                 </div>
-                
-                <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                  {dosagePresets[formData.dosageForm]?.clinicalNote || 'Select an atomic dispensing unit or customize below.'}
-                </p>
 
-                {/* Quick Recommendation Switching Chips */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-emerald-200/60 dark:border-emerald-800/50">
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                    Quick switch:
-                  </span>
-                  {dosagePresets[formData.dosageForm]?.recommendedUnits.map(unitOpt => (
-                    <button
-                      key={unitOpt}
-                      type="button"
-                      onClick={() => {
-                        setBaseUnit(unitOpt);
-                        setCustomUnitMode(false);
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center space-x-1 ${
-                        baseUnit === unitOpt && !customUnitMode
-                          ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400/40'
-                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-100/50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
-                      }`}
-                    >
-                      {baseUnit === unitOpt && !customUnitMode && <Check className="w-3 h-3 text-white" />}
-                      <span>{unitOpt}</span>
-                      {unitOpt === dosagePresets[formData.dosageForm]?.baseUnit && (
-                        <span className="text-[9px] opacity-80 font-normal">(Auto)</span>
-                      )}
-                    </button>
-                  ))}
-                  
+                {hasPack && packMultiplier > 1 && (
                   <button
                     type="button"
-                    onClick={() => setCustomUnitMode(!customUnitMode)}
-                    className={`px-2 py-1 rounded-lg text-xs font-medium transition flex items-center space-x-1 ${
-                      customUnitMode
-                        ? 'bg-brand-600 text-white'
-                        : 'text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/40 border border-dashed border-brand-300 dark:border-brand-700'
-                    }`}
+                    onClick={() => {
+                      if (packMultiplier > 0) {
+                        const calculatedUnitCost = Number((packCost / packMultiplier).toFixed(2));
+                        const calculatedUnitPrice = Number(((packPrice / packMultiplier) * 1.25).toFixed(2));
+                        setPieceCost(calculatedUnitCost);
+                        setPiecePrice(calculatedUnitPrice);
+
+                        if (hasStrip && stripMultiplier > 0) {
+                          const stripsInBox = packMultiplier / stripMultiplier;
+                          const calculatedStripCost = Number((packCost / stripsInBox).toFixed(2));
+                          const calculatedStripPrice = Number(((packPrice / stripsInBox) * 1.15).toFixed(2));
+                          setStripCost(calculatedStripCost);
+                          setStripPrice(calculatedStripPrice);
+                        }
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/70 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 self-start sm:self-auto shadow-sm"
+                    title="Automatically calculate strip and loose piece prices from outer box price"
                   >
-                    <Type className="w-3 h-3" />
-                    <span>{customUnitMode ? 'Using Custom Unit' : 'Custom Unit...'}</span>
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>⚡ Auto-Fill Strips & Loose from Box</span>
                   </button>
-                </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold block">Base Dispensing Unit</label>
+              {/* Base Unit Selection Bar */}
+              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-100 block">
+                      Atomic Base Dispensing Unit <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[10px] text-slate-500">
+                      Smallest single clinical piece dispensed to patients (e.g. 1 Tablet, 1 Capsule, 1 Bottle, 1 mL)
+                    </span>
                   </div>
-                  {customUnitMode ? (
-                    <div className="flex items-center space-x-1">
-                      <input
-                        type="text"
-                        value={baseUnit}
-                        onChange={e => setBaseUnit(e.target.value)}
-                        placeholder="e.g. Nebule, Vial..."
-                        className="w-full p-2 border rounded-lg bg-white dark:bg-slate-800 font-bold text-brand-600"
-                        autoFocus
-                      />
+
+                  <div className="flex items-center space-x-2">
+                    {customUnitMode ? (
+                      <div className="flex items-center space-x-1">
+                        <input
+                          type="text"
+                          value={baseUnit}
+                          onChange={e => setBaseUnit(e.target.value)}
+                          placeholder="e.g. Nebule, Sachet..."
+                          className="px-2.5 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold text-xs text-brand-600 focus:ring-1 focus:ring-brand-500"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCustomUnitMode(false)}
+                          className="p-1.5 text-slate-400 hover:text-slate-600"
+                          title="Revert to list"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-1.5">
+                        <select
+                          value={baseUnit}
+                          onChange={e => setBaseUnit(e.target.value)}
+                          className="px-3 py-1.5 border rounded-lg bg-slate-50 dark:bg-slate-800 font-bold text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500"
+                        >
+                          <optgroup label="Clinical Base Units">
+                            {unitTypes.filter(u => u.category === 'DISPENSING_BASE').map(u => (
+                              <option key={u.id} value={u.name}>{u.name}</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Containers & Bottles">
+                            {unitTypes.filter(u => u.category !== 'DISPENSING_BASE').map(u => (
+                              <option key={u.id} value={u.name}>{u.name}</option>
+                            ))}
+                          </optgroup>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setCustomUnitMode(true)}
+                          className="px-2 py-1.5 text-slate-500 hover:text-brand-600 border border-dashed rounded-lg text-xs font-medium"
+                          title="Type a custom unit name"
+                        >
+                          Custom...
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Dosage preset recommendation chips */}
+                {dosagePresets[formData.dosageForm]?.recommendedUnits && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px]">
+                    <span className="text-slate-400 font-medium">Suggestions for {formData.dosageForm}:</span>
+                    {dosagePresets[formData.dosageForm]?.recommendedUnits.map(u => (
                       <button
+                        key={u}
                         type="button"
-                        onClick={() => setCustomUnitMode(false)}
-                        className="p-2 text-slate-400 hover:text-slate-600"
-                        title="Revert to dropdown"
+                        onClick={() => { setBaseUnit(u); setCustomUnitMode(false); }}
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${
+                          baseUnit === u && !customUnitMode 
+                            ? 'bg-brand-600 text-white shadow-sm' 
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                        }`}
                       >
-                        <X className="w-3.5 h-3.5" />
+                        {baseUnit === u && !customUnitMode ? '✓ ' : ''}{u}
                       </button>
-                    </div>
-                  ) : (
-                    <select
-                      value={baseUnit}
-                      onChange={e => setBaseUnit(e.target.value)}
-                      className="w-full p-2 border rounded-lg bg-white dark:bg-slate-800 font-bold"
-                    >
-                      <optgroup label="Clinical Dispensing Units">
-                        {unitTypes.filter(u => u.category === 'DISPENSING_BASE').map(u => (
-                          <option key={u.id} value={u.name}>{u.name}</option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Containers & Sub-Containers">
-                        {unitTypes.filter(u => u.category !== 'DISPENSING_BASE').map(u => (
-                          <option key={u.id} value={u.name}>{u.name}</option>
-                        ))}
-                      </optgroup>
-                    </select>
-                  )}
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    💡 Single clinical unit dispensed at POS (e.g. <code>Tablet</code>, <code>mL</code>).
-                  </p>
-                </div>
-
-                <div>
-                  <label className="font-semibold block mb-1 flex items-center space-x-1">
-                    <input 
-                      type="checkbox" 
-                      checked={hasStrip} 
-                      onChange={e => setHasStrip(e.target.checked)} 
-                      className="rounded text-brand-600"
-                    />
-                    <span>Strip Multiplier</span>
-                  </label>
-                  <div className="flex items-center space-x-1">
-                    <input
-                      type="number"
-                      min="1"
-                      disabled={!hasStrip}
-                      value={stripMultiplier}
-                      onChange={e => {
-                        const m = parseInt(e.target.value) || 1;
-                        setStripMultiplier(m);
-                        predictFromPiecePrice(piecePrice, pieceCost);
-                      }}
-                      className="w-full p-2 border rounded-lg bg-white dark:bg-slate-800 disabled:opacity-50 font-bold"
-                    />
-                    <span className="text-slate-500 text-[10px]">{baseUnit}s</span>
+                    ))}
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    💡 Base units in 1 blister strip (e.g. <code>10 Tablets</code> per strip).
-                  </p>
-                </div>
+                )}
+              </div>
 
-                <div>
-                  <label className="font-semibold block mb-1 flex items-center space-x-1">
-                    <input 
-                      type="checkbox" 
-                      checked={hasPack} 
-                      onChange={e => setHasPack(e.target.checked)} 
-                      className="rounded text-brand-600"
-                    />
-                    <span>Pack/Box Multiplier</span>
-                  </label>
-                  <div className="flex items-center space-x-1">
+              {/* 3 Packaging & Pricing Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs">
+                {/* 1. OUTER PACK / BOX TIER */}
+                <div className={`p-3.5 rounded-xl border transition space-y-2.5 ${
+                  hasPack 
+                    ? 'bg-white dark:bg-slate-900 border-purple-300 dark:border-purple-800 shadow-sm' 
+                    : 'bg-slate-100/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-60'
+                }`}>
+                  <div className="flex justify-between items-center">
+                    <label className="flex items-center space-x-2 font-bold cursor-pointer text-slate-900 dark:text-white">
+                      <input
+                        type="checkbox"
+                        checked={hasPack}
+                        onChange={e => setHasPack(e.target.checked)}
+                        className="rounded text-purple-600 focus:ring-purple-500"
+                      />
+                      <span>Outer Box / Pack</span>
+                    </label>
+                    <span className="text-[10px] bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-bold px-1.5 py-0.5 rounded">
+                      Wholesale Box
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      Pack Size ({baseUnit}s per box)
+                    </label>
                     <input
                       type="number"
                       min="1"
                       disabled={!hasPack}
                       value={packMultiplier}
-                      onChange={e => {
-                        const m = parseInt(e.target.value) || 1;
-                        setPackMultiplier(m);
-                        predictFromPiecePrice(piecePrice, pieceCost);
-                      }}
-                      className="w-full p-2 border rounded-lg bg-white dark:bg-slate-800 disabled:opacity-50 font-bold"
+                      onChange={e => setPackMultiplier(parseInt(e.target.value) || 1)}
+                      className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-purple-500"
+                      placeholder="e.g. 100"
                     />
-                    <span className="text-slate-500 text-[10px]">{baseUnit}s</span>
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    💡 Total base units in 1 full outer box (e.g. <code>100 Tablets</code> per box).
-                  </p>
-                </div>
-              </div>
-            </div>
 
-            {/* SECTION 3: INTELLIGENT BIDIRECTIONAL PRICE PREDICTOR */}
-            <div className="p-4 bg-brand-50/50 dark:bg-brand-950/30 rounded-xl border border-brand-200 dark:border-brand-800/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Sparkles className="w-4 h-4 text-brand-600 dark:text-brand-400" />
-                  <span className="font-bold text-xs text-brand-900 dark:text-brand-200">
-                    3. Intelligent Bidirectional Price Predictor ({currentCurrency.code})
-                  </span>
-                </div>
-
-                <div className="flex items-center space-x-1.5 text-[11px]">
-                  <span className="text-slate-500">Pack Volume Incentive:</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="30"
-                    value={bulkDiscountPercent}
-                    onChange={e => {
-                      const disc = parseFloat(e.target.value) || 0;
-                      setBulkDiscountPercent(disc);
-                      predictFromPiecePrice(piecePrice, pieceCost);
-                    }}
-                    className="w-12 p-1 text-center bg-white dark:bg-slate-800 border rounded text-xs font-bold"
-                  />
-                  <span>% off</span>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                💡 Enter your <strong>Single Unit Cost & Price</strong> below. The system automatically calculates cost and selling price for Strips and full Boxes, factoring in your volume incentive discount!
-              </p>
-
-              {/* Pricing Tiers Inputs */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                {/* 1. PIECE TIER */}
-                <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border shadow-sm space-y-2">
-                  <div className="flex justify-between items-center font-bold">
-                    <span>Single {baseUnit}</span>
-                    <span className="text-[10px] bg-brand-100 text-brand-800 px-1 rounded">Base</span>
-                  </div>
                   <div>
-                    <label className="text-[10px] text-slate-500 block">Unit Cost ({currentCurrency.symbol})</label>
+                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      Wholesale Cost per Box ({currentCurrency.symbol})
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      disabled={!hasPack}
+                      value={packCost}
+                      onChange={e => setPackCost(parseFloat(e.target.value) || 0)}
+                      className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      Retail Selling Price per Box ({currentCurrency.symbol})
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      disabled={!hasPack}
+                      value={packPrice}
+                      onChange={e => setPackPrice(parseFloat(e.target.value) || 0)}
+                      className="w-full p-2 border border-purple-300 dark:border-purple-700 rounded-lg bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 font-mono font-extrabold focus:ring-2 focus:ring-purple-500 text-sm"
+                    />
+                  </div>
+
+                  {hasPack && packPrice > packCost && (
+                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                      <span>Profit: {formatCurrency(packPrice - packCost)}</span>
+                      <span>({(((packPrice - packCost) / packPrice) * 100).toFixed(1)}% margin)</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. STRIP / BLISTER TIER */}
+                <div className={`p-3.5 rounded-xl border transition space-y-2.5 ${
+                  hasStrip 
+                    ? 'bg-white dark:bg-slate-900 border-indigo-300 dark:border-indigo-800 shadow-sm' 
+                    : 'bg-slate-100/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-60'
+                }`}>
+                  <div className="flex justify-between items-center">
+                    <label className="flex items-center space-x-2 font-bold cursor-pointer text-slate-900 dark:text-white">
+                      <input
+                        type="checkbox"
+                        checked={hasStrip}
+                        onChange={e => setHasStrip(e.target.checked)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span>Strip / Blister</span>
+                    </label>
+                    <span className="text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 font-bold px-1.5 py-0.5 rounded">
+                      Blister Pack
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      Strip Size ({baseUnit}s per strip)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      disabled={!hasStrip}
+                      value={stripMultiplier}
+                      onChange={e => setStripMultiplier(parseInt(e.target.value) || 1)}
+                      className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-indigo-500"
+                      placeholder="e.g. 10"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      Cost per Strip ({currentCurrency.symbol})
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      disabled={!hasStrip}
+                      value={stripCost}
+                      onChange={e => setStripCost(parseFloat(e.target.value) || 0)}
+                      className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      Retail Selling Price per Strip ({currentCurrency.symbol})
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      disabled={!hasStrip}
+                      value={stripPrice}
+                      onChange={e => setStripPrice(parseFloat(e.target.value) || 0)}
+                      className="w-full p-2 border border-indigo-300 dark:border-indigo-700 rounded-lg bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 font-mono font-extrabold focus:ring-2 focus:ring-indigo-500 text-sm"
+                    />
+                  </div>
+
+                  {hasStrip && stripPrice > stripCost && (
+                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                      <span>Profit: {formatCurrency(stripPrice - stripCost)}</span>
+                      <span>({(((stripPrice - stripCost) / stripPrice) * 100).toFixed(1)}% margin)</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. BASE / SINGLE UNIT TIER */}
+                <div className="p-3.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-white dark:bg-slate-900 shadow-sm space-y-2.5">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      Single {baseUnit} (Loose)
+                    </span>
+                    <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded">
+                      1 {baseUnit}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      Unit Cost per {baseUnit} ({currentCurrency.symbol})
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       value={pieceCost}
-                      onChange={e => {
-                        const val = parseFloat(e.target.value) || 0;
-                        setPieceCost(val);
-                        predictFromPiecePrice(piecePrice, val);
-                      }}
-                      className="w-full p-1.5 border rounded font-mono font-bold"
+                      onChange={e => setPieceCost(parseFloat(e.target.value) || 0)}
+                      className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-emerald-500"
                     />
-                    <span className="text-[9px] text-slate-400 block mt-0.5">e.g. GH₵1.50 per tab</span>
                   </div>
+
                   <div>
-                    <label className="text-[10px] text-slate-500 block">Selling Price ({currentCurrency.symbol})</label>
+                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      Retail Selling Price per {baseUnit} ({currentCurrency.symbol})
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       value={piecePrice}
-                      onChange={e => {
-                        const val = parseFloat(e.target.value) || 0;
-                        setPiecePrice(val);
-                        predictFromPiecePrice(val, pieceCost);
-                      }}
-                      className="w-full p-1.5 border rounded font-mono font-extrabold text-brand-600"
+                      onChange={e => setPiecePrice(parseFloat(e.target.value) || 0)}
+                      className="w-full p-2 border border-emerald-300 dark:border-emerald-700 rounded-lg bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 font-mono font-extrabold focus:ring-2 focus:ring-emerald-500 text-sm"
                     />
-                    <span className="text-[9px] text-slate-400 block mt-0.5">e.g. GH₵2.50 per tab</span>
                   </div>
-                </div>
 
-                {/* 2. STRIP TIER */}
-                {hasStrip && (
-                  <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border shadow-sm space-y-2">
-                    <div className="flex justify-between items-center font-bold">
-                      <span>Strip ({stripMultiplier}x)</span>
-                      <span className="text-[10px] text-slate-500">Auto-Predict</span>
+                  {piecePrice > pieceCost && (
+                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                      <span>Profit: {formatCurrency(piecePrice - pieceCost)}</span>
+                      <span>({(((piecePrice - pieceCost) / piecePrice) * 100).toFixed(1)}% margin)</span>
                     </div>
-                    <div>
-                      <label className="text-[10px] text-slate-500 block">Strip Cost ({currentCurrency.symbol})</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={stripCost}
-                        onChange={e => setStripCost(parseFloat(e.target.value) || 0)}
-                        className="w-full p-1.5 border rounded font-mono font-bold"
-                      />
-                      <span className="text-[9px] text-slate-400 block mt-0.5">e.g. {stripMultiplier} × GH₵1.50 = GH₵15.00</span>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-500 block">Strip Selling Price ({currentCurrency.symbol})</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={stripPrice}
-                        onChange={e => setStripPrice(parseFloat(e.target.value) || 0)}
-                        className="w-full p-1.5 border rounded font-mono font-extrabold text-brand-600"
-                      />
-                      <span className="text-[9px] text-slate-400 block mt-0.5">e.g. GH₵24.00 per strip</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. PACK TIER */}
-                {hasPack && (
-                  <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border shadow-sm space-y-2">
-                    <div className="flex justify-between items-center font-bold">
-                      <span>Pack/Box ({packMultiplier}x)</span>
-                      <button
-                        type="button"
-                        onClick={() => decomposeFromPackPrice(packPrice, packCost)}
-                        className="text-[10px] text-brand-600 hover:underline flex items-center space-x-0.5"
-                        title="Decompose box price into single unit prices"
-                      >
-                        <ArrowRightLeft className="w-3 h-3" />
-                        <span>Decompose</span>
-                      </button>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-500 block">Pack Cost ({currentCurrency.symbol})</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={packCost}
-                        onChange={e => setPackCost(parseFloat(e.target.value) || 0)}
-                        className="w-full p-1.5 border rounded font-mono font-bold"
-                      />
-                      <span className="text-[9px] text-slate-400 block mt-0.5">e.g. 100 × GH₵1.50 = GH₵150.00</span>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-500 block">Pack Selling Price ({currentCurrency.symbol})</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={packPrice}
-                        onChange={e => setPackPrice(parseFloat(e.target.value) || 0)}
-                        className="w-full p-1.5 border rounded font-mono font-extrabold text-brand-600"
-                      />
-                      <span className="text-[9px] text-slate-400 block mt-0.5">e.g. GH₵225.00 with {bulkDiscountPercent}% disc</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* LIVE MARGIN & RISK ASSESSMENT CARD */}
-              <div className={`p-3 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${riskInfo.badge}`}>
-                <div className="flex items-center space-x-2">
-                  <ShieldCheck className="w-4 h-4 shrink-0" />
-                  <div>
-                    <span className="font-bold block">{riskInfo.label}</span>
-                    <span className="text-[10px] opacity-90">{riskInfo.description}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-3 text-right">
-                  <div>
-                    <span className="text-[10px] opacity-75 block">Profit per {baseUnit}</span>
-                    <strong className="font-mono">{formatCurrency(profitAmount)}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] opacity-75 block">Gross Margin</span>
-                    <strong className="font-mono">{marginPercent.toFixed(1)}%</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] opacity-75 block">Markup</span>
-                    <strong className="font-mono">{markupPercent.toFixed(1)}%</strong>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* SECTION 4: INVENTORY THRESHOLDS & REGULATORY CONTROLS */}
+            {/* SECTION 3: INVENTORY THRESHOLDS & CLINICAL CONTROLS */}
             <div className="space-y-3">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                4. Inventory Thresholds & Regulatory Controls
+                3. Inventory Thresholds & Clinical Controls
               </span>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -2600,6 +2652,12 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
           </form>
         </div>
       )}
+
+      {/* MODAL 5: BULK PRODUCT CSV IMPORT WIZARD */}
+      <ImportProductsModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+      />
     </div>
   );
 };

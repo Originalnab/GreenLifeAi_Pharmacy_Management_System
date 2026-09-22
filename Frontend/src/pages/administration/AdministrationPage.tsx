@@ -3,18 +3,28 @@ import {
   Building2, Users, ShieldCheck, Coins, Search, Plus, X, 
   CheckCircle2, FileSpreadsheet, Check, KeyRound, Lock, Unlock,
   Sliders, Eye, EyeOff, AlertTriangle, RotateCcw, BadgePercent,
-  CheckCheck, Info, Shield, UserCheck, UserX, Layers, Sparkles, RefreshCw
+  CheckCheck, Info, Shield, UserCheck, UserX, Layers, Sparkles, RefreshCw,
+  Stethoscope, Zap, MapPin, Warehouse, Trash2, Edit3, Store, Image, UploadCloud,
+  Palette, Receipt
 } from 'lucide-react';
 import { usePharmacy } from '../../context/PharmacyContext';
 import { defaultPermissions, defaultSensitiveControls } from '../../data/mock/users';
 import { supportedCurrencies } from '../../data/mock/units';
+import { ALL_NAVIGATION_MODULES, defaultEnabledModules, defaultRoleMenuAccess } from '../../data/mock/modules';
 import { 
   CustomRoleDefinition, ModuleName, PermissionAction, 
-  PermissionMatrix, RoleSensitiveControls, UserAuthorization, RoleType 
+  PermissionMatrix, RoleSensitiveControls, UserAuthorization, RoleType,
+  StorageLocation, User, isDemoUser, getUserAssignedRoles, getUserPrimaryRole
 } from '../../types';
 import { FloatingBulkActionBar } from '../../components/common/FloatingBulkActionBar';
 import { WorkflowGuideNotice } from '../../components/common/WorkflowGuideNotice';
 import { FieldGuideNotice } from '../../components/common/FieldGuideNotice';
+import { Pagination } from '../../components/common/Pagination';
+import { usePagination } from '../../hooks/usePagination';
+import { CreateUserModal } from './components/CreateUserModal';
+import { UserCredentialsModal } from './components/UserCredentialsModal';
+import { AssignUserRolesModal } from './components/AssignUserRolesModal';
+import { PharmacyBrandingSection } from './components/PharmacyBrandingSection';
 
 const MODULE_CONFIG: Array<{
   id: ModuleName;
@@ -63,25 +73,116 @@ export const AdministrationPage: React.FC = () => {
     rolePermissions,
     roleSensitiveControls,
     userAuthorizations,
+    roleMenuAccess,
     updateRolePermissions,
     updateUserAuthorization,
+    updateRoleMenuAccess,
     updateUserRole,
     updateUserStatus,
     revokeUserSessions,
     resetUserCredentials,
-    getUserAuthorization
+    getUserAuthorization,
+    storageLocations,
+    addStorageLocation,
+    updateStorageLocation,
+    deleteStorageLocation,
+    adminResetPassword,
+    operatingMode,
+    toast,
+    confirmDialog
   } = usePharmacy();
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'users' | 'roles' | 'permissions' | 'settings'>('profile');
+  const [showDemoUsersInProd, setShowDemoUsersInProd] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<'profile' | 'users' | 'roles' | 'permissions' | 'branding' | 'settings'>('profile');
+
+  // User Management Modals State
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+  const [credentialsModal, setCredentialsModal] = useState<{
+    isOpen: boolean;
+    user: User | null;
+    tempPassword: string;
+    isReset: boolean;
+  }>({
+    isOpen: false,
+    user: null,
+    tempPassword: '',
+    isReset: false,
+  });
 
   // Dispensary Profile Form State
   const [profileForm, setProfileForm] = useState(systemProfile);
   const [profileSaved, setProfileSaved] = useState(false);
 
+  useEffect(() => {
+    setProfileForm(systemProfile);
+  }, [systemProfile]);
+
+  // Storage Locations & Branches State
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<StorageLocation | null>(null);
+  const [locCode, setLocCode] = useState('');
+  const [locName, setLocName] = useState('');
+  const [locType, setLocType] = useState<StorageLocation['type']>('BRANCH');
+  const [locAddress, setLocAddress] = useState('Main Dispensary Floor');
+  const [locDescription, setLocDescription] = useState('');
+  const [locIsActive, setLocIsActive] = useState(true);
+
+  const handleOpenAddLocation = () => {
+    setEditingLocation(null);
+    setLocCode(`LOC-2026-${Math.floor(100 + Math.random() * 900)}`);
+    setLocName('');
+    setLocType('BRANCH');
+    setLocAddress('Main Dispensary Floor');
+    setLocDescription('');
+    setLocIsActive(true);
+    setShowLocationModal(true);
+  };
+
+  const handleOpenEditLocation = (loc: StorageLocation) => {
+    setEditingLocation(loc);
+    setLocCode(loc.code || '');
+    setLocName(loc.name);
+    setLocType(loc.type);
+    setLocAddress(loc.address || '');
+    setLocDescription(loc.description || '');
+    setLocIsActive(loc.isActive ?? true);
+    setShowLocationModal(true);
+  };
+
+  const handleSaveLocation = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!locName.trim()) {
+      toast.warning('Please enter a location or branch name.', 'Location Name Required');
+      return;
+    }
+    if (editingLocation) {
+      updateStorageLocation(editingLocation.id, {
+        code: locCode,
+        name: locName,
+        type: locType,
+        address: locAddress,
+        description: locDescription,
+        isActive: locIsActive
+      });
+    } else {
+      addStorageLocation({
+        code: locCode,
+        name: locName,
+        type: locType,
+        address: locAddress,
+        description: locDescription,
+        isActive: locIsActive
+      });
+    }
+    setShowLocationModal(false);
+  };
+
   // Staff Users Directory State
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<string>('ALL');
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [assignRolesModal, setAssignRolesModal] = useState<{ isOpen: boolean; user: User | null }>({ isOpen: false, user: null });
 
   // Custom Role Builder State
   const [showRoleModal, setShowRoleModal] = useState(false);
@@ -90,7 +191,100 @@ export const AdministrationPage: React.FC = () => {
   const [financialLimit, setFinancialLimit] = useState('500000');
 
   // Permissions & Authorizations Tab State
-  const [permSubTab, setPermSubTab] = useState<'matrix' | 'users'>('matrix');
+  const [permSubTab, setPermSubTab] = useState<'matrix' | 'users' | 'navigation'>('matrix');
+
+  // Role Menu & Navigation Access State
+  const [selectedNavRole, setSelectedNavRole] = useState<string>('Pharmacist');
+  const [navRoleMenuState, setNavRoleMenuState] = useState<Record<string, boolean>>(() => {
+    return roleMenuAccess['Pharmacist'] || defaultRoleMenuAccess['Pharmacist'] || { ...defaultEnabledModules };
+  });
+  const [navSavedSuccess, setNavSavedSuccess] = useState(false);
+
+  // Sync navRoleMenuState when selectedNavRole changes
+  useEffect(() => {
+    if (roleMenuAccess[selectedNavRole]) {
+      setNavRoleMenuState({ ...roleMenuAccess[selectedNavRole] });
+    } else if (defaultRoleMenuAccess[selectedNavRole as RoleType]) {
+      setNavRoleMenuState({ ...defaultRoleMenuAccess[selectedNavRole as RoleType] });
+    } else {
+      setNavRoleMenuState({ ...defaultEnabledModules });
+    }
+  }, [selectedNavRole, roleMenuAccess]);
+
+  const handleToggleNavRoleModule = (moduleId: string) => {
+    if (selectedNavRole === 'Super Admin' && moduleId === 'settings') return; // Settings is permanent for super admin
+    setNavRoleMenuState(prev => {
+      const current = prev[moduleId] !== false;
+      const nextState = !current;
+      const updated = { ...prev, [moduleId]: nextState };
+
+      // If disabling a parent module, also disable all child sub-modules
+      if (!nextState && !moduleId.includes(':')) {
+        ALL_NAVIGATION_MODULES.filter(m => m.parentId === moduleId).forEach(sub => {
+          updated[sub.id] = false;
+        });
+      }
+      // If enabling a child sub-module, ensure parent module is enabled too
+      if (nextState && moduleId.includes(':')) {
+        const parentId = moduleId.split(':')[0];
+        updated[parentId] = true;
+      }
+      return updated;
+    });
+  };
+
+  const handleNavRolePreset = (preset: 'grant_all' | 'dispensary' | 'reset_defaults') => {
+    if (preset === 'grant_all') {
+      const allOn: Record<string, boolean> = {};
+      ALL_NAVIGATION_MODULES.forEach(m => {
+        allOn[m.id] = m.id === 'settings' ? selectedNavRole === 'Super Admin' : true;
+      });
+      setNavRoleMenuState(allOn);
+    } else if (preset === 'dispensary') {
+      const dispState: Record<string, boolean> = {
+        dashboard: true,
+        pos: true,
+        sales: true,
+        'sales:ledger': true,
+        'sales:credit': false,
+        'sales:drafts': true,
+        'sales:returns': false,
+        'sales:credits': false,
+        catalogue: true,
+        'catalogue:products': true,
+        'catalogue:categories': false,
+        'catalogue:dosage-forms': false,
+        'catalogue:units': false,
+        inventory: false,
+        'inventory:stock': false,
+        'inventory:adjustments': false,
+        'inventory:quarantine': false,
+        purchasing: false,
+        'purchasing:orders': false,
+        'purchasing:grn': false,
+        parties: true,
+        'parties:customers': true,
+        'parties:suppliers': false,
+        finance: false,
+        'finance:expenses': false,
+        'finance:loans': false,
+        reports: false,
+        administration: false,
+        audit: false,
+        settings: false,
+      };
+      setNavRoleMenuState(dispState);
+    } else if (preset === 'reset_defaults') {
+      const def = defaultRoleMenuAccess[selectedNavRole as RoleType] || defaultEnabledModules;
+      setNavRoleMenuState({ ...def });
+    }
+  };
+
+  const handleSaveNavRoleMenuAccess = () => {
+    updateRoleMenuAccess(selectedNavRole, navRoleMenuState);
+    setNavSavedSuccess(true);
+    setTimeout(() => setNavSavedSuccess(false), 4000);
+  };
 
   // RBAC Matrix State
   const [selectedRole, setSelectedRole] = useState<string>('Pharmacist');
@@ -143,6 +337,7 @@ export const AdministrationPage: React.FC = () => {
     'Manager',
     'Pharmacist',
     'Cashier',
+    'Sales Person',
     'Stock Officer',
     'Procurement Officer',
     'Accountant',
@@ -323,16 +518,43 @@ export const AdministrationPage: React.FC = () => {
     setShowRoleModal(false);
     setNewRoleName('');
     setNewRoleDesc('');
-    alert(`Custom role "${newRole.name}" saved to RBAC registry.`);
+    toast.success(`Custom role "${newRole.name}" saved to RBAC registry.`, 'Role Created');
   };
 
-  const filteredUsers = users.filter(u => {
+  const isSuperAdmin = currentUser?.role === 'Super Admin';
+  const isDemo = operatingMode === 'DEMO';
+
+  const visibleUsers = users.filter(u => {
+    if (isDemo) return true;
+    if (isSuperAdmin && showDemoUsersInProd) return true;
+    return !isDemoUser(u);
+  });
+
+  const filteredUsers = visibleUsers.filter(u => {
     const matchesSearch = u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
                           u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
                           (u.licenseNumber || '').toLowerCase().includes(userSearch.toLowerCase());
     const matchesRole = userRoleFilter === 'ALL' || u.role === userRoleFilter;
     return matchesSearch && matchesRole;
   });
+
+  const {
+    currentPage: usersPage,
+    setCurrentPage: setUsersPage,
+    paginatedItems: paginatedUsers
+  } = usePagination(filteredUsers, 10, [userSearch, userRoleFilter, showDemoUsersInProd]);
+
+  const {
+    currentPage: locationsPage,
+    setCurrentPage: setLocationsPage,
+    paginatedItems: paginatedLocations
+  } = usePagination(storageLocations || [], 10);
+
+  const {
+    currentPage: rolesPage,
+    setCurrentPage: setRolesPage,
+    paginatedItems: paginatedRoles
+  } = usePagination(customRoles, 10);
 
   const isAllUsersSelected = filteredUsers.length > 0 && filteredUsers.every(u => selectedUserIds.includes(u.id));
   const isSomeUsersSelected = filteredUsers.some(u => selectedUserIds.includes(u.id)) && !isAllUsersSelected;
@@ -422,6 +644,15 @@ export const AdministrationPage: React.FC = () => {
             <span>Permissions & Authorizations</span>
           </button>
           <button
+            onClick={() => setActiveTab('branding')}
+            className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap flex items-center space-x-1 ${
+              activeTab === 'branding' ? 'bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 shadow-sm font-bold' : 'text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            <Palette className="w-3.5 h-3.5" />
+            <span>Pharmacy Branding & UI</span>
+          </button>
+          <button
             onClick={() => setActiveTab('settings')}
             className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap flex items-center space-x-1 ${
               activeTab === 'settings' ? 'bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 shadow-sm font-bold' : 'text-slate-600 dark:text-slate-400'
@@ -433,9 +664,10 @@ export const AdministrationPage: React.FC = () => {
         </div>
       </div>
 
-      {/* TAB 1: DISPENSARY SYSTEM PROFILE */}
+      {/* TAB 1: DISPENSARY SYSTEM PROFILE & STORAGE LOCATIONS */}
       {activeTab === 'profile' && (
-        <form onSubmit={handleSaveProfile} className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+        <div className="space-y-6">
+          <form onSubmit={handleSaveProfile} className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
           <div className="flex justify-between items-center border-b pb-3">
             <div>
               <h3 className="font-bold text-sm text-slate-900 dark:text-white">Dispensary Enterprise Profile & Regulatory Credentials</h3>
@@ -458,6 +690,128 @@ export const AdministrationPage: React.FC = () => {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="md:col-span-2 bg-gradient-to-r from-brand-50 to-emerald-50 dark:from-brand-950/40 dark:to-emerald-950/40 p-4 rounded-2xl border-2 border-brand-300 dark:border-brand-700/80 space-y-2 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <label className="font-extrabold text-slate-900 dark:text-white text-xs flex items-center space-x-2">
+                  <Store className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                  <span>Shop / Active Branch Location Name *</span>
+                </label>
+                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-brand-100 dark:bg-brand-900/80 text-brand-700 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-800 w-fit">
+                  Live on Receipts, Invoices & TopBar
+                </span>
+              </div>
+              <input
+                type="text"
+                required
+                id="input-shop-branch-name"
+                placeholder="e.g. Greenlife Central Branch (Victoria Island)"
+                value={profileForm.branchName || ''}
+                onChange={e => setProfileForm({ ...profileForm, branchName: e.target.value })}
+                className="w-full p-2.5 rounded-xl border-2 border-brand-400 dark:border-brand-600 bg-white dark:bg-slate-900 font-bold text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500 shadow-inner"
+              />
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                ⭐ Enter your custom shop / branch name here (e.g. <strong>Greenlife Central Branch (Victoria Island)</strong>). Clicking <strong>Save System Profile</strong> updates this name across the <strong>Top Bar</strong>, <strong>Thermal POS Receipts</strong>, <strong>Sales Reprints</strong>, <strong>Medication Return Slips</strong>, <strong>Credit Vouchers</strong>, and all official records.
+              </p>
+            </div>
+
+            {/* Dispensary Brand Logo Card */}
+            <div className="md:col-span-2 bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <label className="font-extrabold text-slate-900 dark:text-white text-xs flex items-center space-x-2">
+                  <Image className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                  <span>Dispensary Brand Logo (Receipts, Invoices & Official Documents)</span>
+                </label>
+                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 w-fit">
+                  Receipts, Reports & Slips
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Upload your pharmacy brand logo or paste an image URL. When enabled in <strong>Printer Configuration</strong>, this logo prints at the top of 80mm & 58mm POS thermal receipts, invoice headers, and exported audit reports.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1 items-start">
+                <div className="md:col-span-2 space-y-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <label className="flex-1 cursor-pointer flex items-center justify-center space-x-2 px-4 py-3 rounded-xl border-2 border-dashed border-brand-300 dark:border-brand-700 hover:bg-brand-50/50 dark:hover:bg-brand-950/30 transition text-brand-700 dark:text-brand-300 font-bold text-xs bg-white dark:bg-slate-900 shadow-sm">
+                      <UploadCloud className="w-4 h-4" />
+                      <span>Choose Brand Logo File (PNG / JPG / SVG)</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            if (file.size > 2 * 1024 * 1024) {
+                              toast.warning('Logo file must be under 2MB.', 'File Too Large');
+                              return;
+                            }
+                            const reader = new FileReader();
+                            reader.onload = ev => {
+                              const result = ev.target?.result as string;
+                              if (result) {
+                                setProfileForm({ ...profileForm, logoUrl: result });
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                    {profileForm.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setProfileForm({ ...profileForm, logoUrl: '' })}
+                        className="px-3 py-2 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold flex items-center justify-center space-x-1 transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove Logo</span>
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-medium block mb-1">Or Direct Web Image URL:</label>
+                    <input
+                      type="url"
+                      placeholder="https://example.com/logo.png"
+                      value={profileForm.logoUrl || ''}
+                      onChange={e => setProfileForm({ ...profileForm, logoUrl: e.target.value })}
+                      className="w-full p-2 text-xs rounded-lg border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Thermal Simulation Box */}
+                <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner flex flex-col items-center justify-center text-center space-y-1.5">
+                  <span className="text-[9px] font-mono uppercase tracking-wider text-slate-400 font-bold">
+                    Receipt Header Simulation
+                  </span>
+                  {profileForm.logoUrl ? (
+                    <div className="space-y-1">
+                      <img
+                        src={profileForm.logoUrl}
+                        alt="Dispensary Logo"
+                        className="h-10 max-w-[140px] mx-auto object-contain p-0.5 border border-slate-200 dark:border-slate-700 rounded bg-white"
+                      />
+                      <p className="font-mono font-bold text-[11px] text-slate-900 dark:text-white uppercase tracking-tight">
+                        {profileForm.branchName || profileForm.tradeName || 'Pharmacy Branch'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="py-2 space-y-1">
+                      <div className="w-10 h-10 rounded-lg bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300 mx-auto flex items-center justify-center font-bold text-xs">
+                        G+
+                      </div>
+                      <p className="text-[10px] text-slate-400">Default Brand Icon</p>
+                    </div>
+                  )}
+                  <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">
+                    ✓ Ready for 80mm & 58mm Thermal
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <div>
               <label className="font-semibold block mb-1">Pharmacy Legal Enterprise Name *</label>
               <input
@@ -467,6 +821,7 @@ export const AdministrationPage: React.FC = () => {
                 onChange={e => setProfileForm({ ...profileForm, legalName: e.target.value })}
                 className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 font-medium"
               />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Official corporate registered title</span>
             </div>
 
             <div>
@@ -477,6 +832,7 @@ export const AdministrationPage: React.FC = () => {
                 onChange={e => setProfileForm({ ...profileForm, tradeName: e.target.value })}
                 className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 font-medium"
               />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Storefront brand title shown on receipts</span>
             </div>
 
             <div>
@@ -579,8 +935,275 @@ export const AdministrationPage: React.FC = () => {
                 className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800"
               />
             </div>
+
+            {/* SUPER ADMIN CLINICAL DISPENSING POLICY: PRESCRIPTION SIGN-OFF REQUIRED (POM) */}
+            <div className="md:col-span-2 border-t pt-5 mt-2 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div className="flex items-start space-x-3">
+                  <div className={`p-2.5 rounded-xl ${
+                    (profileForm.requireDoctorAuthorization ?? true)
+                      ? 'bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300'
+                      : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                  }`}>
+                    <Stethoscope className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2 flex-wrap">
+                      <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                        Prescription Sign-Off Required (POM)
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300 border border-violet-200">
+                        Clinical Governance
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Toggle clinical authorization gating for Prescription-Only Medications (POM). When turned <strong>OFF</strong>, the system will never show the doctor authorization modal or warning messages—cashiers can sell immediately.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Live Status Badge & Toggle Switch */}
+                <div className="flex items-center space-x-4 self-end sm:self-center flex-shrink-0">
+                  <div className="text-right">
+                    {(profileForm.requireDoctorAuthorization ?? true) ? (
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300 border border-violet-300 flex items-center space-x-1 shadow-sm">
+                        <Lock className="w-3 h-3 text-violet-600" />
+                        <span>ON (Strict Sign-Off Required)</span>
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 flex items-center space-x-1 shadow-sm">
+                        <Unlock className="w-3 h-3 text-emerald-600" />
+                        <span>OFF (Direct Sales Allowed)</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    id="toggle-prescription-signoff"
+                    onClick={() => {
+                      const newVal = !(profileForm.requireDoctorAuthorization ?? true);
+                      const updated = { ...profileForm, requireDoctorAuthorization: newVal };
+                      setProfileForm(updated);
+                      // Apply immediately to systemProfile context as well
+                      updateSystemProfile({ requireDoctorAuthorization: newVal });
+                    }}
+                    className={`relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                      (profileForm.requireDoctorAuthorization ?? true) ? 'bg-violet-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                    role="switch"
+                    aria-checked={profileForm.requireDoctorAuthorization ?? true}
+                    title="Toggle Prescription Sign-Off Required (POM)"
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        (profileForm.requireDoctorAuthorization ?? true) ? 'translate-x-6' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Policy Visual Simulation Box */}
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">
+                    POS Prescription Sign-Off Verification Modal Preview:
+                  </span>
+                  {(profileForm.requireDoctorAuthorization ?? true) ? (
+                    <span className="text-[11px] font-semibold text-rose-600 flex items-center space-x-1">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Shown at POS Counter when dispensing POMs</span>
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-emerald-600 flex items-center space-x-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Bypassed: Cashiers will NOT see this modal; direct checkout allowed</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Simulated Modal Card */}
+                <div className={`p-4 rounded-xl border max-w-lg transition-all ${
+                  (profileForm.requireDoctorAuthorization ?? true)
+                    ? 'border-violet-300 bg-violet-50/40 dark:bg-violet-950/20 opacity-100'
+                    : 'border-dashed border-slate-300 bg-slate-50/50 dark:bg-slate-800/30 opacity-60'
+                }`}>
+                  <div className="flex items-center space-x-2 text-violet-700 dark:text-violet-400 font-bold text-xs pb-2 border-b border-violet-200 dark:border-violet-800/50 mb-3">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Prescription Sign-Off Required (POM)</span>
+                    {!(profileForm.requireDoctorAuthorization ?? true) && (
+                      <span className="ml-auto text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">BYPASSED</span>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2 text-[11px] text-slate-600 dark:text-slate-400">
+                    <div>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Patient Name *: </span>
+                      <span className="font-mono text-slate-500">Full patient name</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Prescribing Doctor *: </span>
+                      <span className="text-slate-700 dark:text-slate-300">Dr. Kelechi Nnamdi</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Medical License Number *: </span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300">MDCN-44109</span>
+                    </div>
+                    <div className="p-2 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                      <p className="font-bold text-slate-800 dark:text-slate-200">Supervising Pharmacist Sign-Off</p>
+                      <p className="text-[10px] text-emerald-600 font-semibold">Dr. Adeyemi Adeleke (PCN-SA-88392)</p>
+                    </div>
+                    <div className="flex justify-end space-x-2 pt-1 text-[10px]">
+                      <span className="px-2.5 py-1 rounded border border-slate-300 bg-white dark:bg-slate-800 font-semibold">Cancel</span>
+                      <span className="px-2.5 py-1 rounded bg-violet-600 text-white font-bold">Authorize & Continue</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </form>
+
+        {/* PHARMACY BRANDING & UI AESTHETICS (8-PALETTE SUITE) */}
+        <PharmacyBrandingSection />
+
+        {/* LOCATIONS, BRANCHES & RECEIVING BAYS REGISTRY */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-xl bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
+                  <Warehouse className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                    Dispensary Branches, Shops & Storage Locations Registry
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Register additional retail shops, branch dispensaries, intake receiving bays, and cold rooms. These locations populate the GRN receiving dropdown automatically.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                id="add-location-branch-btn"
+                onClick={handleOpenAddLocation}
+                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow flex items-center space-x-1.5 transition whitespace-nowrap self-end sm:self-auto"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Add Branch / Location</span>
+              </button>
+            </div>
+
+            {/* Locations Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="p-3">Location Code</th>
+                    <th className="p-3">Branch / Location Name</th>
+                    <th className="p-3">Facility Type</th>
+                    <th className="p-3">Address / Zone</th>
+                    <th className="p-3">Operational Notes</th>
+                    <th className="p-3 text-center">Status</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {(paginatedLocations || []).map(loc => {
+                    const typeBadge = (() => {
+                      switch (loc.type) {
+                        case 'BRANCH':
+                          return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">Branch Pharmacy / Shop</span>;
+                        case 'BAY':
+                          return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">Receiving Bay / Dock</span>;
+                        case 'COLD_ROOM':
+                          return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300">Cold Chain (2°C - 8°C)</span>;
+                        case 'WAREHOUSE':
+                          return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">Central Warehouse Depot</span>;
+                        default:
+                          return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300">Dispensary Shelf</span>;
+                      }
+                    })();
+
+                    return (
+                      <tr key={loc.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                        <td className="p-3 font-mono font-bold text-teal-700 dark:text-teal-400">
+                          {loc.code}
+                        </td>
+                        <td className="p-3 font-bold text-slate-900 dark:text-white">
+                          <div className="flex items-center space-x-2">
+                            <MapPin className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
+                            <span>{loc.name}</span>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          {typeBadge}
+                        </td>
+                        <td className="p-3 text-slate-600 dark:text-slate-300">
+                          {loc.address || 'Central Premises'}
+                        </td>
+                        <td className="p-3 text-slate-500 text-[11px] max-w-xs truncate">
+                          {loc.description || '—'}
+                        </td>
+                        <td className="p-3 text-center">
+                          {loc.isActive ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                              Inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditLocation(loc)}
+                              className="p-1.5 text-slate-600 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/40 rounded-lg transition"
+                              title="Edit location"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const confirmed = await confirmDialog({
+                                  title: 'Delete Storage Location',
+                                  message: `Are you sure you want to delete storage location "${loc.name}"?`,
+                                  description: 'Inventory items currently mapped to this bay will need reassignment.',
+                                  confirmText: 'Delete Location',
+                                  variant: 'danger'
+                                });
+                                if (confirmed) {
+                                  deleteStorageLocation(loc.id);
+                                  toast.success(`Storage location "${loc.name}" deleted.`, 'Location Deleted');
+                                }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition"
+                              title="Delete location"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              currentPage={locationsPage}
+              totalItems={(storageLocations || []).length}
+              pageSize={10}
+              onPageChange={setLocationsPage}
+            />
+          </div>
+        </div>
       )}
 
       {/* TAB 2: STAFF USERS DIRECTORY */}
@@ -607,12 +1230,40 @@ export const AdministrationPage: React.FC = () => {
                 <option value="ALL">All Roles</option>
                 <option value="Super Admin">Super Admin</option>
                 <option value="Pharmacy Admin">Pharmacy Admin</option>
+                <option value="Manager">Manager</option>
                 <option value="Pharmacist">Pharmacist</option>
                 <option value="Cashier">Cashier</option>
+                <option value="Sales Person">Sales Person</option>
                 <option value="Stock Officer">Stock Officer</option>
+                <option value="Procurement Officer">Procurement Officer</option>
                 <option value="Accountant">Accountant</option>
                 <option value="Auditor">Auditor</option>
               </select>
+
+              {isSuperAdmin && !isDemo && (
+                <button
+                  type="button"
+                  onClick={() => setShowDemoUsersInProd(!showDemoUsersInProd)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center space-x-1.5 transition ${
+                    showDemoUsersInProd
+                      ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800'
+                      : 'bg-slate-50 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  }`}
+                  title="Toggle demo logins visibility (Super Admin Exclusive)"
+                >
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>{showDemoUsersInProd ? 'Hide Demo Logins' : 'Show Demo Logins'}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowCreateUserModal(true)}
+                className="px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Staff Member</span>
+              </button>
             </div>
           </div>
 
@@ -636,22 +1287,24 @@ export const AdministrationPage: React.FC = () => {
                         <span className="font-mono text-[11px] text-slate-400">#</span>
                       </div>
                     </th>
-                    <th className="p-3">Staff Name</th>
+                    <th className="p-3">Staff Member</th>
                     <th className="p-3">System Role</th>
-                    <th className="p-3">Email Address</th>
+                    <th className="p-3">Contact & Phone</th>
+                    <th className="p-3">Date of Birth</th>
                     <th className="p-3">PCN / Medical License</th>
                     <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-slate-400">
+                      <td colSpan={8} className="p-8 text-center text-slate-400">
                         No staff members found matching criteria.
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((u, index) => {
+                    paginatedUsers.map((u, index) => {
                       const isSelected = selectedUserIds.includes(u.id);
                       return (
                         <tr 
@@ -671,17 +1324,86 @@ export const AdministrationPage: React.FC = () => {
                                 className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-700 cursor-pointer"
                               />
                               <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 w-5 text-right">
-                                {index + 1}
+                                {(usersPage - 1) * 10 + index + 1}
                               </span>
                             </div>
                           </td>
-                          <td className="p-3 font-bold text-slate-900 dark:text-white">{u.name}</td>
                           <td className="p-3">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-300">
-                              {u.role}
-                            </span>
+                            <div className="flex items-center space-x-2.5">
+                              {u.avatarUrl ? (
+                                <img
+                                  src={u.avatarUrl}
+                                  alt={u.name}
+                                  className="w-7 h-7 rounded-lg object-cover"
+                                />
+                              ) : (
+                                <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-[10px] flex items-center justify-center">
+                                  {u.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                </div>
+                              )}
+                              <div>
+                                <p className="font-bold text-slate-900 dark:text-white leading-tight flex items-center space-x-1.5">
+                                  <span>{u.name}</span>
+                                  {isDemoUser(u) && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
+                                      DEMO
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-mono">@{u.username}</p>
+                              </div>
+                            </div>
                           </td>
-                          <td className="p-3 text-slate-600 dark:text-slate-300 font-mono text-[11px]">{u.email}</td>
+                          <td className="p-3">
+                            {(() => {
+                              const assigned = getUserAssignedRoles(u);
+                              const primary = getUserPrimaryRole(u);
+                              const hasMultiple = assigned.length > 1;
+                              return (
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-300">
+                                      {primary}
+                                    </span>
+                                    {hasMultiple && (
+                                      <span 
+                                        className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 cursor-help"
+                                        title={`Assigned Roles (${assigned.length}): ${assigned.join(', ')}`}
+                                      >
+                                        +{assigned.length - 1} more
+                                      </span>
+                                    )}
+                                  </div>
+                                  {hasMultiple && (
+                                    <p className="text-[10px] text-slate-400 font-mono truncate max-w-[150px]" title={assigned.join(', ')}>
+                                      {assigned.filter(r => r !== primary).join(', ')}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td className="p-3">
+                            <div className="space-y-0.5">
+                              <p className="text-slate-600 dark:text-slate-300 font-mono text-[11px]">{u.email}</p>
+                              {u.phone && (
+                                <p className="text-[10px] text-slate-500 font-mono flex items-center space-x-1">
+                                  <span>📞 {u.phone}</span>
+                                  {u.alternatePhone && <span className="text-slate-400">/ {u.alternatePhone}</span>}
+                                </p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3 font-mono text-slate-600 dark:text-slate-400">
+                            {u.dob ? (
+                              <span className="inline-flex items-center space-x-1">
+                                <span>📅</span>
+                                <span>{u.dob}</span>
+                              </span>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
                           <td className="p-3 font-mono text-slate-500">{u.licenseNumber || '—'}</td>
                           <td className="p-3">
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
@@ -690,6 +1412,58 @@ export const AdministrationPage: React.FC = () => {
                               {u.active ? 'Active' : 'Deactivated'}
                             </span>
                           </td>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end space-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setAssignRolesModal({ isOpen: true, user: u })}
+                                className="p-1.5 text-brand-600 hover:text-brand-700 hover:bg-brand-50 dark:hover:bg-brand-950/40 rounded-lg transition"
+                                title="Assign Roles & Privileges (Multi-Role Management)"
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const confirmed = await confirmDialog({
+                                    title: 'Reset Staff Password',
+                                    message: `Reset password for staff member "${u.name}" (@${u.username})?`,
+                                    description: 'A new single-use temporary password will be generated and active sessions will be terminated.',
+                                    confirmText: 'Reset Password',
+                                    variant: 'warning'
+                                  });
+                                  if (confirmed) {
+                                    const res = adminResetPassword(u.id);
+                                    setCredentialsModal({
+                                      isOpen: true,
+                                      user: res.user,
+                                      tempPassword: res.tempPassword,
+                                      isReset: true,
+                                    });
+                                    toast.success(`Temporary password generated for ${u.name}.`, 'Credentials Reset');
+                                  }
+                                }}
+                                className="p-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition"
+                                title="Reset Password & Issue Temporary Credentials"
+                              >
+                                <KeyRound className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => updateUserStatus(u.id, !u.active)}
+                                className={`p-1.5 rounded-lg transition ${
+                                  u.active
+                                    ? 'text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                                    : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                                }`}
+                                title={u.active ? 'Deactivate Account' : 'Activate Account'}
+                              >
+                                {u.active ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })
@@ -697,6 +1471,13 @@ export const AdministrationPage: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            <Pagination
+              currentPage={usersPage}
+              totalItems={filteredUsers.length}
+              pageSize={10}
+              onPageChange={setUsersPage}
+            />
 
             <FloatingBulkActionBar
               selectedCount={selectedUserIds.length}
@@ -733,7 +1514,7 @@ export const AdministrationPage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {customRoles.map(role => (
+            {paginatedRoles.map(role => (
               <div key={role.id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-2 text-xs">
                 <div className="flex justify-between items-start">
                   <h4 className="font-bold text-sm text-slate-900 dark:text-white">{role.name}</h4>
@@ -749,6 +1530,15 @@ export const AdministrationPage: React.FC = () => {
               </div>
             ))}
           </div>
+
+          {customRoles.length > 0 && (
+            <Pagination
+              currentPage={rolesPage}
+              totalItems={customRoles.length}
+              pageSize={10}
+              onPageChange={setRolesPage}
+            />
+          )}
         </div>
       )}
 
@@ -794,6 +1584,16 @@ export const AdministrationPage: React.FC = () => {
               >
                 <UserCheck className="w-3.5 h-3.5" />
                 <span>User Direct Authorizations</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPermSubTab('navigation')}
+                className={`px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5 ${
+                  permSubTab === 'navigation' ? 'bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 shadow-sm font-bold' : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Role Menu & Navigation Access</span>
               </button>
             </div>
           </div>
@@ -1060,45 +1860,36 @@ export const AdministrationPage: React.FC = () => {
                     </div>
                   </label>
 
-                  {/* Manage Settings */}
+                  {/* View All Staff Sales Records */}
                   <label className="flex items-start space-x-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 cursor-pointer hover:border-brand-300 transition">
                     <input
                       type="checkbox"
                       disabled={selectedRole === 'Super Admin'}
-                      checked={selectedRole === 'Super Admin' ? true : sensitiveState.manageSettings}
-                      onChange={e => setSensitiveState({ ...sensitiveState, manageSettings: e.target.checked })}
+                      checked={selectedRole === 'Super Admin' ? true : !!sensitiveState.viewAllSalesRecords}
+                      onChange={e => setSensitiveState({ ...sensitiveState, viewAllSalesRecords: e.target.checked })}
                       className="mt-0.5 w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300"
                     />
                     <div className="space-y-0.5">
                       <span className="font-bold text-slate-900 dark:text-white flex items-center space-x-1">
-                        <Building2 className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Manage Dispensary System Settings</span>
+                        <Receipt className="w-3.5 h-3.5 text-slate-500" />
+                        <span>View All Staff Sales Records</span>
                       </span>
                       <p className="text-[11px] text-slate-500">
-                        Allows editing premises license, superintendent credentials, active operating currency, and printer templates.
+                        When unchecked, sales persons and cashiers only see sales receipts/invoices they processed personally. When checked, they see store-wide sales from all staff.
                       </p>
                     </div>
                   </label>
 
-                  {/* Protected Diagnostics */}
-                  <label className="flex items-start space-x-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 cursor-pointer hover:border-brand-300 transition">
-                    <input
-                      type="checkbox"
-                      disabled={selectedRole === 'Super Admin'}
-                      checked={selectedRole === 'Super Admin' ? true : sensitiveState.protectedDiagnostics}
-                      onChange={e => setSensitiveState({ ...sensitiveState, protectedDiagnostics: e.target.checked })}
-                      className="mt-0.5 w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300"
-                    />
-                    <div className="space-y-0.5">
-                      <span className="font-bold text-slate-900 dark:text-white flex items-center space-x-1">
-                        <Sliders className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Access Technical Health & Docker</span>
-                      </span>
-                      <p className="text-[11px] text-slate-500">
-                        Allows monitoring PostgreSQL, Redis, local Docker service status, and technical latency logs.
-                      </p>
+                  {/* Elevated to Super Admin Settings */}
+                  <div className="md:col-span-2 p-3.5 rounded-xl border-2 border-dashed border-amber-300 dark:border-amber-700/80 bg-amber-50/70 dark:bg-amber-950/20 space-y-1.5">
+                    <div className="flex items-center space-x-2 text-amber-800 dark:text-amber-300 font-bold text-xs">
+                      <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>Elevated to Super Admin Governance Settings</span>
                     </div>
-                  </label>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                      <strong>Manage Dispensary System Settings</strong> (premises license, superintendent credentials, active operating currency, and printer templates) and <strong>Access Technical Health & Docker</strong> (PostgreSQL 16 connection pool, Redis cache, local Docker service status, and latency logs) are now exclusively accessible to <strong>Super Administrators</strong> under <strong>System Settings &gt; Super Admin Settings</strong>.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex justify-between items-center pt-2 border-t">
@@ -1443,6 +2234,25 @@ export const AdministrationPage: React.FC = () => {
                         </p>
                       </div>
                     </label>
+
+                    {/* View All Staff Sales Records */}
+                    <label className="flex items-start space-x-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 cursor-pointer hover:border-brand-300 transition">
+                      <input
+                        type="checkbox"
+                        checked={!!userAuthForm.canViewAllSalesRecords}
+                        onChange={e => setUserAuthForm({ ...userAuthForm, canViewAllSalesRecords: e.target.checked })}
+                        className="mt-0.5 w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300"
+                      />
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-slate-900 dark:text-white flex items-center space-x-1">
+                          <Receipt className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Allow Viewing All Staff Sales Records</span>
+                        </span>
+                        <p className="text-[11px] text-slate-500">
+                          Directly overrides role restriction to grant this staff member access to view all store-wide sales transactions rather than only their personal records.
+                        </p>
+                      </div>
+                    </label>
                   </div>
 
                   <div className="flex justify-between items-center pt-2 border-t">
@@ -1465,10 +2275,218 @@ export const AdministrationPage: React.FC = () => {
               </form>
             </div>
           )}
+
+          {/* SUB-VIEW 3: ROLE MENU & NAVIGATION ACCESS */}
+          {permSubTab === 'navigation' && (
+            <div className="space-y-4 text-xs">
+              {/* Role Selection & Quick Presets Toolbar */}
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center space-x-2">
+                    <label className="font-bold text-slate-700 dark:text-slate-300">Target Role:</label>
+                    <select
+                      value={selectedNavRole}
+                      onChange={e => setSelectedNavRole(e.target.value)}
+                      className="p-2 rounded-xl border border-brand-300 dark:border-brand-700 bg-brand-50/50 dark:bg-brand-950/40 font-bold text-brand-900 dark:text-brand-200"
+                    >
+                      {allRoles.map(roleName => (
+                        <option key={roleName} value={roleName}>
+                          {roleName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                    selectedNavRole === 'Super Admin'
+                      ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
+                      : customRoles.some(r => r.name === selectedNavRole)
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300'
+                      : 'bg-brand-100 text-brand-800 dark:bg-brand-950/80 dark:text-brand-300'
+                  }`}>
+                    {selectedNavRole === 'Super Admin' ? 'Full Unrestricted Access' : `${users.filter(u => u.role === selectedNavRole).length} Active Staff Member(s)`}
+                  </span>
+                </div>
+
+                {/* Quick Presets & Save */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-slate-400 font-medium">Quick Presets:</span>
+                  <button
+                    type="button"
+                    disabled={selectedNavRole === 'Super Admin'}
+                    onClick={() => handleNavRolePreset('grant_all')}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold disabled:opacity-40"
+                  >
+                    Grant All Menus
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedNavRole === 'Super Admin'}
+                    onClick={() => handleNavRolePreset('dispensary')}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold disabled:opacity-40"
+                  >
+                    Dispensary Counter Preset
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedNavRole === 'Super Admin'}
+                    onClick={() => handleNavRolePreset('reset_defaults')}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center space-x-1 disabled:opacity-40"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Defaults</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Informational Guidance Notice */}
+              <WorkflowGuideNotice
+                title="Role-Based Menu & Sub-Tab Navigation Governance"
+                subtitle="Configure exact sidebar menu, sub-menu, and tab visibility per staff role"
+                badgeText="Navigation Matrix"
+                variant="emerald"
+              >
+                <div className="space-y-1.5 text-xs text-emerald-800 dark:text-emerald-300">
+                  <p className="leading-relaxed">
+                    • <strong>Real-Time Dynamic Sidebar:</strong> When a user logs in or switches into this role, only the enabled main menus, sub-menu tabs, and pages will be visible in their left navigation bar and tab bars.
+                  </p>
+                  <p className="leading-relaxed">
+                    • <strong>Parent/Child Synchronization:</strong> Disabling a main menu automatically hides all child sub-menus (e.g. disabling <em>Commercial & Sales</em> hides <em>Invoices Ledger</em>, <em>Drafts</em>, and <em>Returns</em>).
+                  </p>
+                </div>
+              </WorkflowGuideNotice>
+
+              {/* Success Notification */}
+              {navSavedSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Navigation menu access configuration saved for "{selectedNavRole}". Active sessions refreshed immediately.</span>
+                </div>
+              )}
+
+              {/* Category-Grouped Navigation Matrix */}
+              <div className="space-y-4">
+                {Array.from(new Set(ALL_NAVIGATION_MODULES.map(m => m.category))).map(categoryName => {
+                  const categoryModules = ALL_NAVIGATION_MODULES.filter(m => m.category === categoryName);
+                  const mainModules = categoryModules.filter(m => m.type === 'main');
+
+                  return (
+                    <div key={categoryName} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                      <div className="bg-slate-50/80 dark:bg-slate-800/80 px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <span className="w-2 h-2 rounded-full bg-brand-500" />
+                          <h4 className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider">{categoryName}</h4>
+                        </div>
+                        <span className="text-[11px] text-slate-500">
+                          {categoryModules.filter(m => navRoleMenuState[m.id] !== false).length} of {categoryModules.length} enabled
+                        </span>
+                      </div>
+
+                      <div className="p-4 space-y-4 divide-y divide-slate-100 dark:divide-slate-800">
+                        {mainModules.map(mainMod => {
+                          const isMainEnabled = navRoleMenuState[mainMod.id] !== false;
+                          const subModules = categoryModules.filter(m => m.parentId === mainMod.id);
+
+                          return (
+                            <div key={mainMod.id} className="pt-3 first:pt-0 space-y-3">
+                              {/* Main Menu Item Row */}
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-bold text-slate-900 dark:text-white text-xs">{mainMod.label}</span>
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+                                      Main Navigation
+                                    </span>
+                                    {mainMod.isSystemLocked && (
+                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                        Super Admin Locked
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-slate-500">{mainMod.description}</p>
+                                </div>
+
+                                <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+                                  <input
+                                    type="checkbox"
+                                    disabled={selectedNavRole === 'Super Admin' && mainMod.id === 'settings'}
+                                    checked={selectedNavRole === 'Super Admin' ? true : isMainEnabled}
+                                    onChange={() => handleToggleNavRoleModule(mainMod.id)}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-600 disabled:opacity-50"></div>
+                                </label>
+                              </div>
+
+                              {/* Sub-Menus & Sub-Tabs */}
+                              {subModules.length > 0 && (
+                                <div className={`ml-4 pl-4 border-l-2 space-y-2.5 transition ${isMainEnabled ? 'border-brand-200 dark:border-brand-800' : 'border-slate-200 dark:border-slate-800 opacity-50'}`}>
+                                  {subModules.map(subMod => {
+                                    const isSubEnabled = isMainEnabled && (navRoleMenuState[subMod.id] !== false);
+
+                                    return (
+                                      <div key={subMod.id} className="flex items-center justify-between gap-3 py-1">
+                                        <div className="space-y-0.5">
+                                          <div className="flex items-center space-x-2">
+                                            <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs">{subMod.label}</span>
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                              Sub-Menu / Tab
+                                            </span>
+                                          </div>
+                                          <p className="text-[10px] text-slate-400">{subMod.description}</p>
+                                        </div>
+
+                                        <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                                          <input
+                                            type="checkbox"
+                                            disabled={!isMainEnabled || selectedNavRole === 'Super Admin'}
+                                            checked={selectedNavRole === 'Super Admin' ? true : isSubEnabled}
+                                            onChange={() => handleToggleNavRoleModule(subMod.id)}
+                                            className="sr-only peer"
+                                          />
+                                          <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600 disabled:opacity-40"></div>
+                                        </label>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Bottom Sticky Action Bar */}
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-slate-500 text-[11px]">
+                  Configuring navigation menus & sub-tabs for role: <strong className="text-slate-900 dark:text-white font-bold">{selectedNavRole}</strong>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={selectedNavRole === 'Super Admin'}
+                  onClick={handleSaveNavRoleMenuAccess}
+                  className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center space-x-1.5 transition"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Save Navigation Access for {selectedNavRole}</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* TAB 5: SETTINGS & CURRENCY CONFIGURATION */}
+      {/* TAB 5: PHARMACY BRANDING & UI AESTHETICS */}
+      {activeTab === 'branding' && (
+        <PharmacyBrandingSection isStandaloneTab={true} />
+      )}
+
+      {/* TAB 6: SETTINGS & CURRENCY CONFIGURATION */}
       {activeTab === 'settings' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Currency Configuration Card */}
@@ -1610,6 +2628,173 @@ export const AdministrationPage: React.FC = () => {
             </div>
           </form>
         </div>
+      )}
+
+      {/* MODAL: ADD / EDIT DISPENSARY BRANCH & STORAGE LOCATION */}
+      {showLocationModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <form onSubmit={handleSaveLocation} className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 rounded-xl bg-teal-100 dark:bg-teal-950 text-teal-600">
+                  <Warehouse className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                    {editingLocation ? 'Edit Branch / Storage Bay' : 'Register New Branch / Location'}
+                  </h3>
+                  <p className="text-xs text-slate-500">Populates GRN Receiving Bay and inventory transfers</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowLocationModal(false)}><X className="w-4 h-4" /></button>
+            </div>
+
+            <div className="text-xs space-y-3">
+              <div>
+                <label className="font-bold block text-slate-700 dark:text-slate-300 mb-1">
+                  Location / Branch Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={locName}
+                  onChange={e => setLocName(e.target.value)}
+                  placeholder="e.g. Receiving Bay A - Central Dock, or East Legon Branch"
+                  className="w-full p-2.5 border rounded-xl bg-slate-50 dark:bg-slate-800 font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="font-bold text-slate-700 dark:text-slate-300">Code *</label>
+                    <button
+                      type="button"
+                      onClick={() => setLocCode(`LOC-2026-${Math.floor(100 + Math.random() * 900)}`)}
+                      className="text-[10px] text-teal-600 hover:text-teal-700 font-bold flex items-center space-x-0.5"
+                    >
+                      <RefreshCw className="w-2.5 h-2.5" />
+                      <span>Re-roll</span>
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={locCode}
+                    onChange={e => setLocCode(e.target.value)}
+                    className="w-full p-2.5 border rounded-xl bg-slate-50 dark:bg-slate-800 font-mono font-bold text-teal-700 dark:text-teal-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold block text-slate-700 dark:text-slate-300 mb-1">Facility Type *</label>
+                  <select
+                    value={locType}
+                    onChange={e => setLocType(e.target.value as any)}
+                    className="w-full p-2.5 border rounded-xl bg-slate-50 dark:bg-slate-800 font-medium"
+                  >
+                    <option value="BRANCH">Branch Pharmacy / Shop</option>
+                    <option value="BAY">Receiving Bay / Intake Dock</option>
+                    <option value="COLD_ROOM">Cold Chain Storage</option>
+                    <option value="WAREHOUSE">Warehouse / Bulk Depot</option>
+                    <option value="SHELF">Dispensary Retail Shelf</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold block text-slate-700 dark:text-slate-300 mb-1">
+                  Address / Floor / Room Zone
+                </label>
+                <input
+                  type="text"
+                  value={locAddress}
+                  onChange={e => setLocAddress(e.target.value)}
+                  placeholder="e.g. Ground Floor Intake Dock 1, or 45 Boundary Rd"
+                  className="w-full p-2.5 border rounded-xl bg-slate-50 dark:bg-slate-800 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold block text-slate-700 dark:text-slate-300 mb-1">
+                  Operational Purpose & Description
+                </label>
+                <textarea
+                  rows={2}
+                  value={locDescription}
+                  onChange={e => setLocDescription(e.target.value)}
+                  placeholder="e.g. Dedicated bay for ambient pharmaceutical carton intake and FEFO quarantine"
+                  className="w-full p-2.5 border rounded-xl bg-slate-50 dark:bg-slate-800 font-medium"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="loc-active-checkbox"
+                  checked={locIsActive}
+                  onChange={e => setLocIsActive(e.target.checked)}
+                  className="rounded text-teal-600 focus:ring-teal-500 h-4 w-4"
+                />
+                <label htmlFor="loc-active-checkbox" className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                  Active Facility (Available for intake receiving & dispensing)
+                </label>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowLocationModal(false)}
+                className="px-4 py-2 border rounded-xl text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                id="save-location-btn"
+                className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow flex items-center space-x-1"
+              >
+                <Check className="w-4 h-4" />
+                <span>{editingLocation ? 'Save Changes' : 'Register Location'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Create Staff Account Modal */}
+      <CreateUserModal
+        isOpen={showCreateUserModal}
+        onClose={() => setShowCreateUserModal(false)}
+        onUserCreated={(newUser, tempPassword) => {
+          setCredentialsModal({
+            isOpen: true,
+            user: newUser,
+            tempPassword,
+            isReset: false,
+          });
+        }}
+      />
+
+      {/* User Temporary Credentials Modal */}
+      {credentialsModal.user && (
+        <UserCredentialsModal
+          isOpen={credentialsModal.isOpen}
+          onClose={() => setCredentialsModal(prev => ({ ...prev, isOpen: false, user: null }))}
+          user={credentialsModal.user}
+          temporaryPassword={credentialsModal.tempPassword}
+          isPasswordReset={credentialsModal.isReset}
+        />
+      )}
+
+      {/* Assign User Roles Modal (Multi-Role Management) */}
+      {assignRolesModal.user && (
+        <AssignUserRolesModal
+          isOpen={assignRolesModal.isOpen}
+          onClose={() => setAssignRolesModal({ isOpen: false, user: null })}
+          user={assignRolesModal.user}
+        />
       )}
     </div>
   );

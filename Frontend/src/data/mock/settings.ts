@@ -21,7 +21,8 @@ export const initialSystemProfile: SystemProfile = {
   taxIdentificationNumber: 'TIN-991823019-GH',
   defaultVatPercent: 7.5,
   logoUrl: '',
-  branchName: 'Ikeja Central Hospital Road (Main Hub)'
+  branchName: 'Greenlife Central Branch (Victoria Island)',
+  requireDoctorAuthorization: true
 };
 
 export const initialApiCredentials: ApiCredentialsConfig = {
@@ -45,6 +46,15 @@ export const initialPrinterConfig: PrinterConfig = {
   showQrCode: true,
   showBatchDetails: true,
   showPrescriberInfo: true,
+  showCashierName: true,
+  showCustomerName: true,
+  showTaxBreakdown: true,
+  showHeaderNote: true,
+  showFooterPolicy: true,
+  showPremisesLicense: true,
+  showSuperintendentName: true,
+  showPoweredBy: true,
+  poweredByText: 'Powered by GreenlifeAI Dispensary Engine',
   headerNote: 'Licensed Clinical Community Pharmacy • PCN Premises Reg: PCN-LAG-00918',
   footerPolicy: 'Medicines dispensed in good condition are not returnable without pharmacist review. Keep medicines in a cool, dry place away from children.',
   fontScale: 'normal',
@@ -132,5 +142,48 @@ HINT:  See server log for query details. Automatic retry succeeded on attempt 2.
     source: 'FRONTEND',
     component: 'BarcodeScannerListener',
     message: 'Unrecognized barcode scan "0105038291028374": No product mapped in local catalogue. Prompting cashier for manual lookup.',
+  }
+];
+
+export const initialStorageLocations = [
+  {
+    id: 'loc_001',
+    name: 'Dispensary Inward Receiving Bay 1',
+    type: 'BAY' as const,
+    branchName: 'Main Dispensary Hub',
+    isDefault: true,
+    description: 'Main ground level dock for wholesale delivery verification and batch quarantine inspection.'
+  },
+  {
+    id: 'loc_002',
+    name: 'Main Dispensary Shelf R-01 (Oral Solids)',
+    type: 'SHELF' as const,
+    branchName: 'Main Dispensary Hub',
+    isDefault: false,
+    description: 'Active POS dispensing racks for tablets, capsules, and blister packs.'
+  },
+  {
+    id: 'loc_003',
+    name: 'Cold-Chain Refrigerator 1 (2°C–8°C)',
+    type: 'COLD_ROOM' as const,
+    branchName: 'Main Dispensary Hub',
+    isDefault: false,
+    description: 'Temperature-monitored pharmaceutical fridge for insulins, vaccines, and biologics.'
+  },
+  {
+    id: 'loc_004',
+    name: 'Bulk Storage Warehouse Bay 2',
+    type: 'WAREHOUSE' as const,
+    branchName: 'Main Logistics Depot',
+    isDefault: false,
+    description: 'High-density pallet racking for wholesale replenishment cartons.'
+  },
+  {
+    id: 'loc_005',
+    name: 'Airport Residential Branch Store',
+    type: 'BRANCH' as const,
+    branchName: 'Airport Branch Store',
+    isDefault: false,
+    description: 'Secondary storefront dispensary counter and outpatient retail bay.'
   }
 ];

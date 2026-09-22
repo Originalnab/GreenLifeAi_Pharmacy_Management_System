@@ -50,22 +50,22 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ onNavigate }
             </button>
           </div>
         </div>
-        <DashboardFilterBar period={period} onChange={setPeriod} className="opacity-80" />
+        <DashboardFilterBar period={period} onChange={setPeriod} className="mt-1" />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard title="Shift Sales" value={formatCurrency(shiftSales)} subValue="My shift total"
-          icon={<ShoppingBag className="w-4 h-4" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
-          trend="up" trendLabel="Active shift" accentColor="hover:border-amber-500/50" />
-        <KpiCard title="Transactions" value={`${txCount}`} subValue="Completed sales"
-          icon={<FileText className="w-4 h-4" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
-          trend="up" trendLabel="This period" accentColor="hover:border-emerald-500/50" />
-        <KpiCard title="Cash in Drawer" value={formatCurrency(cashDue)} subValue="Expected balance"
-          icon={<Banknote className="w-4 h-4" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
-          trend="neutral" trendLabel={`Float: ${formatCurrency(activeShift?.openingFloat ?? 0)}`} accentColor="hover:border-blue-500/50" />
-        <KpiCard title="Shift Opened" value={shiftOpen} subValue={activeShift ? activeShift.shiftNumber : 'No active shift'}
-          icon={<Clock className="w-4 h-4" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
-          trend="neutral" trendLabel="Duration" accentColor="hover:border-purple-500/50" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard title="Shift Sales" value={formatCurrency(shiftSales)} subValue="Active shift total"
+          icon={<ShoppingBag className="w-5 h-5" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
+          trend="up" trendLabel="Active register" accentColor="hover:border-amber-500/50" />
+        <KpiCard title="Transactions" value={`${txCount}`} subValue="Completed checkouts"
+          icon={<FileText className="w-5 h-5" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
+          trend="up" trendLabel="Shift throughput" accentColor="hover:border-emerald-500/50" />
+        <KpiCard title="Cash in Drawer" value={formatCurrency(cashDue)} subValue={`Float: ${formatCurrency(activeShift?.openingFloat ?? 0)}`}
+          icon={<Banknote className="w-5 h-5" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
+          trend="neutral" trendLabel="Expected drawer cash" accentColor="hover:border-blue-500/50" />
+        <KpiCard title="Shift Status" value={activeShift ? 'Open' : 'Closed'} subValue={activeShift ? `Since ${shiftOpen} (${activeShift.shiftNumber})` : 'No active shift'}
+          icon={<Clock className="w-5 h-5" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
+          trend="neutral" trendLabel={activeShift ? 'Currently operating' : 'Offline'} accentColor="hover:border-purple-500/50" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

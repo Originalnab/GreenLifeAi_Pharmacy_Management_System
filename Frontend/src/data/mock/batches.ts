@@ -1,62 +1,165 @@
 import { Batch, StockMovement } from '../../types';
 
-export const initialBatches: Batch[] = [
-  // Amoxil Forte Batches (FEFO demonstration)
+const rawBatches = [
+  // Emzor Batch (Multi-product: Amoxil + Ciprobay)
+  {
+    id: 'batch_amox_02',
+    productId: 'prod_amox_500',
+    productName: 'Amoxil Forte 500mg',
+    batchNumber: 'BAT-2026-EMZ01',
+    manufacturingDate: '2026-01-15',
+    expiryDate: '2027-08-30', // Fresh batch
+    quantityOnHand: 140,
+    availableQuantity: 140,
+    unitCost: 18.00,
+    sellingPrice: 26.00,
+    supplierId: 'sup_001',
+    supplierName: 'Emzor Pharmaceuticals Industries Ltd',
+    status: 'ACTIVE',
+    storageLocation: 'Shelf A-03 (Antibiotics)',
+    receivedDate: '2026-02-10',
+    grnNumber: 'GRN-2026-0041',
+    deliveryNote: 'WB-EMZ-442'
+  },
+  {
+    id: 'batch_cipro_01',
+    productId: 'prod_cipro_500',
+    productName: 'Ciprobay 500mg',
+    batchNumber: 'BAT-2026-EMZ01',
+    manufacturingDate: '2026-01-20',
+    expiryDate: '2027-06-15',
+    quantityOnHand: 48,
+    availableQuantity: 48,
+    unitCost: 26.00,
+    sellingPrice: 38.00,
+    supplierId: 'sup_001',
+    supplierName: 'Emzor Pharmaceuticals Industries Ltd',
+    status: 'ACTIVE',
+    storageLocation: 'Shelf A-03 (Antibiotics)',
+    receivedDate: '2026-02-10',
+    grnNumber: 'GRN-2026-0041',
+    deliveryNote: 'WB-EMZ-442'
+  },
+
+  // Fidson Batch (Multi-product: Coartem + Glucophage + Lantus)
+  {
+    id: 'batch_coar_01',
+    productId: 'prod_coartem_80',
+    productName: 'Coartem 80/480',
+    batchNumber: 'BAT-2026-FID02',
+    manufacturingDate: '2025-06-20',
+    expiryDate: '2027-05-30',
+    quantityOnHand: 92,
+    availableQuantity: 92,
+    unitCost: 22.00,
+    sellingPrice: 32.00,
+    supplierId: 'sup_002',
+    supplierName: 'Fidson Healthcare Plc',
+    status: 'ACTIVE',
+    storageLocation: 'Shelf M-01 (Antimalarials)',
+    receivedDate: '2025-08-15',
+    grnNumber: 'GRN-2026-0028',
+    deliveryNote: 'WB-FID-901'
+  },
+  {
+    id: 'batch_met_01',
+    productId: 'prod_metform_500',
+    productName: 'Glucophage 500mg',
+    batchNumber: 'BAT-2026-FID02',
+    manufacturingDate: '2025-08-01',
+    expiryDate: '2027-07-31',
+    quantityOnHand: 75,
+    availableQuantity: 75,
+    unitCost: 31.00,
+    sellingPrice: 45.00,
+    supplierId: 'sup_002',
+    supplierName: 'Fidson Healthcare Plc',
+    status: 'ACTIVE',
+    storageLocation: 'Shelf D-04 (Diabetic)',
+    receivedDate: '2025-08-15',
+    grnNumber: 'GRN-2026-0028',
+    deliveryNote: 'WB-FID-901'
+  },
+  {
+    id: 'batch_ins_01',
+    productId: 'prod_insulin_glarg',
+    productName: 'Lantus SoloStar Pen 100IU',
+    batchNumber: 'BAT-2026-FID02',
+    manufacturingDate: '2025-11-01',
+    expiryDate: '2027-03-31',
+    quantityOnHand: 18,
+    availableQuantity: 18,
+    unitCost: 145.00,
+    sellingPrice: 198.00,
+    supplierId: 'sup_002',
+    supplierName: 'Fidson Healthcare Plc',
+    status: 'ACTIVE',
+    storageLocation: 'Medical Refrigerator 1 (2°C - 8°C)',
+    receivedDate: '2025-08-15',
+    grnNumber: 'GRN-2026-0028',
+    deliveryNote: 'WB-FID-901'
+  },
+
+  // Swiss Pharma Batch (Multi-product: Panadol + Losec)
+  {
+    id: 'batch_para_02',
+    productId: 'prod_para_500',
+    productName: 'Panadol Extra 500mg',
+    batchNumber: 'BAT-2026-SWI03',
+    manufacturingDate: '2026-02-12',
+    expiryDate: '2028-02-20',
+    quantityOnHand: 220,
+    availableQuantity: 220,
+    unitCost: 7.50,
+    sellingPrice: 12.00,
+    supplierId: 'sup_003',
+    supplierName: 'Swiss Pharma Nigeria Ltd',
+    status: 'ACTIVE',
+    storageLocation: 'Overstock Bay 2',
+    receivedDate: '2026-03-20',
+    grnNumber: 'GRN-2026-0015',
+    deliveryNote: 'WB-SWISS-772'
+  },
+  {
+    id: 'batch_omep_01',
+    productId: 'prod_omep_20',
+    productName: 'Losec 20mg',
+    batchNumber: 'BAT-2026-SWI03',
+    manufacturingDate: '2025-05-15',
+    expiryDate: '2027-04-30',
+    quantityOnHand: 110,
+    availableQuantity: 110,
+    unitCost: 19.50,
+    sellingPrice: 29.00,
+    supplierId: 'sup_003',
+    supplierName: 'Swiss Pharma Nigeria Ltd',
+    status: 'ACTIVE',
+    storageLocation: 'Shelf G-02 (GIT)',
+    receivedDate: '2026-03-20',
+    grnNumber: 'GRN-2026-0015',
+    deliveryNote: 'WB-SWISS-772'
+  },
+
+  // Single-product older batches / near expiry / expired
   {
     id: 'batch_amox_01',
     productId: 'prod_amox_500',
     productName: 'Amoxil Forte 500mg',
     batchNumber: 'AMX-2025-091',
     manufacturingDate: '2025-03-10',
-    expiryDate: '2026-10-25', // Near expiry (< 45 days)
+    expiryDate: '2026-10-25', // Near expiry
     quantityOnHand: 45,
     availableQuantity: 45,
-    unitCost: 1750.00,
-    sellingPrice: 2600.00,
+    unitCost: 17.50,
+    sellingPrice: 26.00,
     supplierId: 'sup_001',
     supplierName: 'Emzor Pharmaceuticals Industries Ltd',
     status: 'NEAR_EXPIRY',
     storageLocation: 'Shelf A-02 (Antibiotics)',
     receivedDate: '2025-04-02',
+    grnNumber: 'GRN-2025-0982',
+    deliveryNote: 'WB-EMZ-101'
   },
-  {
-    id: 'batch_amox_02',
-    productId: 'prod_amox_500',
-    productName: 'Amoxil Forte 500mg',
-    batchNumber: 'AMX-2026-014',
-    manufacturingDate: '2026-01-15',
-    expiryDate: '2027-08-30', // Fresh batch
-    quantityOnHand: 140,
-    availableQuantity: 140,
-    unitCost: 1800.00,
-    sellingPrice: 2600.00,
-    supplierId: 'sup_001',
-    supplierName: 'Emzor Pharmaceuticals Industries Ltd',
-    status: 'ACTIVE',
-    storageLocation: 'Shelf A-03 (Antibiotics)',
-    receivedDate: '2026-02-10',
-  },
-
-  // Coartem Batches
-  {
-    id: 'batch_coar_01',
-    productId: 'prod_coartem_80',
-    productName: 'Coartem 80/480',
-    batchNumber: 'CRT-NOV-401',
-    manufacturingDate: '2025-06-20',
-    expiryDate: '2027-05-30',
-    quantityOnHand: 92,
-    availableQuantity: 92,
-    unitCost: 2200.00,
-    sellingPrice: 3200.00,
-    supplierId: 'sup_002',
-    supplierName: 'Fidson Healthcare Plc',
-    status: 'ACTIVE',
-    storageLocation: 'Shelf M-01 (Antimalarials)',
-    receivedDate: '2025-08-15',
-  },
-
-  // Panadol Extra Batches
   {
     id: 'batch_para_01',
     productId: 'prod_para_500',
@@ -66,127 +169,45 @@ export const initialBatches: Batch[] = [
     expiryDate: '2026-11-15', // Near expiry
     quantityOnHand: 120,
     availableQuantity: 120,
-    unitCost: 700.00,
-    sellingPrice: 1200.00,
+    unitCost: 7.00,
+    sellingPrice: 12.00,
     supplierId: 'sup_003',
     supplierName: 'Swiss Pharma Nigeria Ltd',
     status: 'NEAR_EXPIRY',
     storageLocation: 'Counter Fast-Track 01',
     receivedDate: '2025-03-01',
+    grnNumber: 'GRN-2025-0771',
+    deliveryNote: 'WB-SWISS-504'
   },
-  {
-    id: 'batch_para_02',
-    productId: 'prod_para_500',
-    productName: 'Panadol Extra 500mg',
-    batchNumber: 'PND-2026-105',
-    manufacturingDate: '2026-02-12',
-    expiryDate: '2028-02-20',
-    quantityOnHand: 220,
-    availableQuantity: 220,
-    unitCost: 750.00,
-    sellingPrice: 1200.00,
-    supplierId: 'sup_003',
-    supplierName: 'Swiss Pharma Nigeria Ltd',
-    status: 'ACTIVE',
-    storageLocation: 'Overstock Bay 2',
-    receivedDate: '2026-03-20',
-  },
-
-  // Metformin Batches
-  {
-    id: 'batch_met_01',
-    productId: 'prod_metform_500',
-    productName: 'Glucophage 500mg',
-    batchNumber: 'GLU-MER-881',
-    manufacturingDate: '2025-08-01',
-    expiryDate: '2027-07-31',
-    quantityOnHand: 75,
-    availableQuantity: 75,
-    unitCost: 3100.00,
-    sellingPrice: 4500.00,
-    supplierId: 'sup_002',
-    supplierName: 'Fidson Healthcare Plc',
-    status: 'ACTIVE',
-    storageLocation: 'Shelf D-04 (Diabetic)',
-    receivedDate: '2025-09-15',
-  },
-
-  // Omeprazole Batches
-  {
-    id: 'batch_omep_01',
-    productId: 'prod_omep_20',
-    productName: 'Losec 20mg',
-    batchNumber: 'OMP-AZ-330',
-    manufacturingDate: '2025-05-15',
-    expiryDate: '2027-04-30',
-    quantityOnHand: 110,
-    availableQuantity: 110,
-    unitCost: 1950.00,
-    sellingPrice: 2900.00,
-    supplierId: 'sup_004',
-    supplierName: 'May & Baker Nigeria Plc',
-    status: 'ACTIVE',
-    storageLocation: 'Shelf G-02 (GIT)',
-    receivedDate: '2025-07-10',
-  },
-
-  // Ciprofloxacin Batches
-  {
-    id: 'batch_cipro_01',
-    productId: 'prod_cipro_500',
-    productName: 'Ciprobay 500mg',
-    batchNumber: 'CPB-BAY-902',
-    manufacturingDate: '2025-01-20',
-    expiryDate: '2026-10-10', // Near expiry (< 3 weeks!)
-    quantityOnHand: 48,
-    availableQuantity: 48,
-    unitCost: 2600.00,
-    sellingPrice: 3800.00,
-    supplierId: 'sup_001',
-    supplierName: 'Emzor Pharmaceuticals Industries Ltd',
-    status: 'NEAR_EXPIRY',
-    storageLocation: 'Shelf A-06 (Antibiotics)',
-    receivedDate: '2025-03-05',
-  },
-
-  // Insulin Cold Chain Batch
-  {
-    id: 'batch_ins_01',
-    productId: 'prod_insulin_glarg',
-    productName: 'Lantus SoloStar Pen 100IU',
-    batchNumber: 'LAN-SNF-711',
-    manufacturingDate: '2025-11-01',
-    expiryDate: '2027-03-31',
-    quantityOnHand: 18,
-    availableQuantity: 18,
-    unitCost: 14500.00,
-    sellingPrice: 19800.00,
-    supplierId: 'sup_002',
-    supplierName: 'Fidson Healthcare Plc',
-    status: 'ACTIVE',
-    storageLocation: 'Medical Refrigerator 1 (2°C - 8°C)',
-    receivedDate: '2025-12-10',
-  },
-
-  // Quarantined / Expired Batch for testing
   {
     id: 'batch_vitc_exp',
     productId: 'prod_vitc_1000',
     productName: 'Redoxon Immuno Pro',
     batchNumber: 'RDX-2024-009',
     manufacturingDate: '2024-06-01',
-    expiryDate: '2026-08-31', // Expired!
+    expiryDate: '2026-08-31', // Expired
     quantityOnHand: 15,
     availableQuantity: 0,
-    unitCost: 1800.00,
-    sellingPrice: 2800.00,
+    unitCost: 18.00,
+    sellingPrice: 28.00,
     supplierId: 'sup_003',
     supplierName: 'Swiss Pharma Nigeria Ltd',
     status: 'EXPIRED',
     storageLocation: 'Quarantine Holding Bin Q-01',
     receivedDate: '2024-08-01',
+    grnNumber: 'GRN-2024-0009',
+    deliveryNote: 'WB-SWISS-201'
   }
 ];
+
+export const initialBatches: Batch[] = rawBatches.map(b => ({
+  ...b,
+  mfgDate: b.manufacturingDate,
+  remainingStock: b.quantityOnHand,
+  initialStock: b.quantityOnHand,
+  costPrice: b.unitCost,
+  status: b.status as any
+}));
 
 export const initialStockMovements: StockMovement[] = [
   {
@@ -196,7 +217,7 @@ export const initialStockMovements: StockMovement[] = [
     productId: 'prod_amox_500',
     productName: 'Amoxil Forte 500mg',
     batchId: 'batch_amox_02',
-    batchNumber: 'AMX-2026-014',
+    batchNumber: 'BAT-2026-EMZ01',
     quantity: 140,
     balanceBefore: 45,
     balanceAfter: 185,

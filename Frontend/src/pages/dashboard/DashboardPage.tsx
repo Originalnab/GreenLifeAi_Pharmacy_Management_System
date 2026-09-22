@@ -7,6 +7,7 @@ import { PharmacyAdminDashboard }  from './layouts/PharmacyAdminDashboard';
 import { ManagerDashboard }        from './layouts/ManagerDashboard';
 import { PharmacistDashboard }     from './layouts/PharmacistDashboard';
 import { CashierDashboard }        from './layouts/CashierDashboard';
+import { SalesPersonDashboard }    from './layouts/SalesPersonDashboard';
 import { StockOfficerDashboard }   from './layouts/StockOfficerDashboard';
 import { ProcurementDashboard }    from './layouts/ProcurementDashboard';
 import { AccountantDashboard }     from './layouts/AccountantDashboard';
@@ -31,6 +32,8 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
       return <PharmacistDashboard onNavigate={onNavigate} />;
     case 'Cashier':
       return <CashierDashboard onNavigate={onNavigate} />;
+    case 'Sales Person':
+      return <SalesPersonDashboard onNavigate={onNavigate} />;
     case 'Stock Officer':
       return <StockOfficerDashboard onNavigate={onNavigate} />;
     case 'Procurement Officer':

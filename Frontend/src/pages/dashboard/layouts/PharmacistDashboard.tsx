@@ -42,22 +42,22 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ onNavi
             </button>
           </div>
         </div>
-        <DashboardFilterBar period={period} onChange={setPeriod} className="opacity-80" />
+        <DashboardFilterBar period={period} onChange={setPeriod} className="mt-1" />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard title="Prescriptions Pending" value={`${prescPending} Pending`} subValue="Awaiting review"
-          icon={<FileText className="w-4 h-4" />} iconBg="bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400"
-          trend={prescPending > 3 ? 'down' : 'neutral'} trendLabel="Review queue" accentColor="hover:border-teal-500/50" />
-        <KpiCard title="Controlled Drug Flags" value={`${controlledFlags} Flags`} subValue="POM items flagged"
-          icon={<AlertTriangle className="w-4 h-4" />} iconBg="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
-          trend={controlledFlags > 0 ? 'down' : 'neutral'} trendLabel="Review needed" accentColor="hover:border-rose-500/50" />
-        <KpiCard title="Expiring < 30 Days" value={`${expiring30} Batches`} subValue="Critical window"
-          icon={<Clock className="w-4 h-4" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
-          trend={expiring30 > 2 ? 'down' : 'neutral'} trendLabel="Urgent" accentColor="hover:border-amber-500/50" onClick={() => onNavigate('inventory')} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard title="Prescriptions Pending" value={`${prescPending} Pending`} subValue="Awaiting pharmacist review"
+          icon={<FileText className="w-5 h-5" />} iconBg="bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400"
+          trend={prescPending > 3 ? 'down' : 'neutral'} trendLabel="Review queue active" accentColor="hover:border-teal-500/50" />
+        <KpiCard title="Controlled Drug Flags" value={`${controlledFlags} Flags`} subValue="POM medications flagged"
+          icon={<AlertTriangle className="w-5 h-5" />} iconBg="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
+          trend={controlledFlags > 0 ? 'down' : 'neutral'} trendLabel="Review required" accentColor="hover:border-rose-500/50" />
+        <KpiCard title="Expiring < 30 Days" value={`${expiring30} Batches`} subValue="Critical quarantine window"
+          icon={<Clock className="w-5 h-5" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
+          trend={expiring30 > 2 ? 'down' : 'neutral'} trendLabel="Immediate attention" accentColor="hover:border-amber-500/50" onClick={() => onNavigate('inventory')} />
         <KpiCard title="Dispensed This Period" value={`${dispensed}`} subValue="Completed dispensings"
-          icon={<CheckCircle2 className="w-4 h-4" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
-          trend="up" trendLabel="Processed" accentColor="hover:border-emerald-500/50" />
+          icon={<CheckCircle2 className="w-5 h-5" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
+          trend="up" trendLabel="Processed safely" accentColor="hover:border-emerald-500/50" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

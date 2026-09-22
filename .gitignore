@@ -1,6 +1,20 @@
 # Dependencies
 node_modules/
 */node_modules/
+venv/
+.venv/
+*/venv/
+*/.venv/
+
+# Python cache & bytecode
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*$py.class
+
+# Large Docker archives (offline bundles)
+*.tar
+*.tar.gz
 
 # Production build outputs
 dist/

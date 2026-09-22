@@ -39,22 +39,22 @@ export const AuditorDashboard: React.FC<AuditorDashboardProps> = ({ onNavigate }
             </button>
           </div>
         </div>
-        <DashboardFilterBar period={period} onChange={setPeriod} className="opacity-80" />
+        <DashboardFilterBar period={period} onChange={setPeriod} className="mt-1" />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard title="Audit Events" value={`${auditCount}`} subValue={`${PERIOD_META[period].label}`}
-          icon={<FileText className="w-4 h-4" />} iconBg="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-          trend="neutral" trendLabel="All recorded" accentColor="hover:border-slate-400/50" onClick={() => onNavigate('audit')} />
-        <KpiCard title="Security Events" value={`${secCount}`} subValue="Failed logins / anomalies"
-          icon={<Shield className="w-4 h-4" />} iconBg={secCount >= 5 ? "bg-rose-50 dark:bg-rose-950/50 text-rose-600" : "bg-slate-100 dark:bg-slate-800 text-slate-500"}
-          trend={secCount >= 5 ? 'down' : 'neutral'} trendLabel={secCount >= 5 ? 'Review now' : 'Normal'} accentColor="hover:border-rose-500/50" />
-        <KpiCard title="Approvals Today" value={`${approvedCount}`} subValue="Authorized transactions"
-          icon={<CheckCircle2 className="w-4 h-4" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
-          trend="neutral" trendLabel="Processed" accentColor="hover:border-emerald-500/50" />
-        <KpiCard title="Flagged Items" value={`${flaggedCount}`} subValue="Unusual activity"
-          icon={<AlertTriangle className="w-4 h-4" />} iconBg={flaggedCount > 0 ? "bg-amber-50 dark:bg-amber-950/50 text-amber-600" : "bg-slate-100 dark:bg-slate-800 text-slate-500"}
-          trend={flaggedCount > 0 ? 'down' : 'neutral'} trendLabel={flaggedCount > 0 ? 'Review required' : 'All clear'} accentColor="hover:border-amber-500/50" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard title="Audit Events" value={`${auditCount}`} subValue={`${PERIOD_META[period].label} recorded`}
+          icon={<FileText className="w-5 h-5" />} iconBg="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+          trend="neutral" trendLabel="Immutable ledger" accentColor="hover:border-slate-400/50" onClick={() => onNavigate('audit')} />
+        <KpiCard title="Security Events" value={`${secCount}`} subValue="Failed logins & session flags"
+          icon={<Shield className="w-5 h-5" />} iconBg={secCount >= 5 ? "bg-rose-50 dark:bg-rose-950/50 text-rose-600" : "bg-slate-100 dark:bg-slate-800 text-slate-500"}
+          trend={secCount >= 5 ? 'down' : 'neutral'} trendLabel={secCount >= 5 ? 'Review required' : 'All secure'} accentColor="hover:border-rose-500/50" />
+        <KpiCard title="Approvals Today" value={`${approvedCount}`} subValue="Authorized manager overrides"
+          icon={<CheckCircle2 className="w-5 h-5" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
+          trend="neutral" trendLabel="Verified transactions" accentColor="hover:border-emerald-500/50" />
+        <KpiCard title="Flagged Anomalies" value={`${flaggedCount}`} subValue="Variance / pricing flags"
+          icon={<AlertTriangle className="w-5 h-5" />} iconBg={flaggedCount > 0 ? "bg-amber-50 dark:bg-amber-950/50 text-amber-600" : "bg-slate-100 dark:bg-slate-800 text-slate-500"}
+          trend={flaggedCount > 0 ? 'down' : 'neutral'} trendLabel={flaggedCount > 0 ? 'Action required' : 'Zero flags'} accentColor="hover:border-amber-500/50" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

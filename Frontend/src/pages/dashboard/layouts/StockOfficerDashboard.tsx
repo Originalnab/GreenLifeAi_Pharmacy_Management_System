@@ -36,21 +36,21 @@ export const StockOfficerDashboard: React.FC<StockOfficerDashboardProps> = ({ on
             </button>
           </div>
         </div>
-        <DashboardFilterBar period={period} onChange={setPeriod} className="opacity-80" />
+        <DashboardFilterBar period={period} onChange={setPeriod} className="mt-1" />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard title="Low / Out of Stock" value={`${lowStock} Products`} subValue="Below reorder"
-          icon={<Package className="w-4 h-4" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard title="Low / Out of Stock" value={`${lowStock} Products`} subValue="Below safety reorder level"
+          icon={<Package className="w-5 h-5" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
           trend={lowStock > 3 ? 'down' : 'neutral'} trendLabel="Reorder needed" accentColor="hover:border-amber-500/50" onClick={() => onNavigate('inventory')} />
-        <KpiCard title="Expiring < 60 Days" value={`${expCount} Batches`} subValue="At expiry risk"
-          icon={<Clock className="w-4 h-4" />} iconBg="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
-          trend={expCount > 2 ? 'down' : 'neutral'} trendLabel="Review queue" accentColor="hover:border-rose-500/50" onClick={() => onNavigate('inventory')} />
-        <KpiCard title="Awaiting Receiving" value={`${awaitRec} POs`} subValue="Approved, not received"
-          icon={<Truck className="w-4 h-4" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
-          trend={awaitRec > 0 ? 'down' : 'neutral'} trendLabel="Pending action" accentColor="hover:border-blue-500/50" onClick={() => onNavigate('purchasing')} />
-        <KpiCard title="Stock Counts Pending" value={`${countsP} Counts`} subValue="Scheduled counts"
-          icon={<RotateCcw className="w-4 h-4" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
+        <KpiCard title="Expiring < 60 Days" value={`${expCount} Batches`} subValue="Critical FEFO risk window"
+          icon={<Clock className="w-5 h-5" />} iconBg="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
+          trend={expCount > 2 ? 'down' : 'neutral'} trendLabel="Quarantine review" accentColor="hover:border-rose-500/50" onClick={() => onNavigate('inventory')} />
+        <KpiCard title="Awaiting Receiving" value={`${awaitRec} POs`} subValue="Approved, pending intake"
+          icon={<Truck className="w-5 h-5" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
+          trend={awaitRec > 0 ? 'down' : 'neutral'} trendLabel="Pending dock intake" accentColor="hover:border-blue-500/50" onClick={() => onNavigate('purchasing')} />
+        <KpiCard title="Stock Counts Pending" value={`${countsP} Counts`} subValue="Scheduled cycle counts"
+          icon={<RotateCcw className="w-5 h-5" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
           trend="neutral" trendLabel="Schedule due" accentColor="hover:border-purple-500/50" onClick={() => onNavigate('inventory')} />
       </div>
 

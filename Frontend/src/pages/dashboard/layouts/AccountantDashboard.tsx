@@ -47,30 +47,54 @@ export const AccountantDashboard: React.FC<AccountantDashboardProps> = ({ onNavi
             </button>
           </div>
         </div>
-        <DashboardFilterBar period={period} onChange={setPeriod} className="opacity-80" />
+        <DashboardFilterBar period={period} onChange={setPeriod} className="mt-1" />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <KpiCard title="Revenue" value={formatCurrency(revenue)} subValue={`${PERIOD_META[period].label}`}
-          icon={<TrendingUp className="w-4 h-4" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
-          trend="up" trendLabel="Total sales" accentColor="hover:border-emerald-500/50" onClick={() => onNavigate('sales')} />
-        <KpiCard title="Customer AR" value={formatCurrency(totalAR)} subValue="Outstanding credit"
-          icon={<CreditCard className="w-4 h-4" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
-          trend="neutral" trendLabel="Receivables" accentColor="hover:border-blue-500/50" onClick={() => onNavigate('parties')} />
-        <KpiCard title="Supplier AP" value={formatCurrency(totalAP)} subValue="Outstanding payables"
-          icon={<Building2 className="w-4 h-4" />} iconBg="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard title="Gross Revenue" value={formatCurrency(revenue)} subValue={`Expenses: ${formatCurrency(totalExpenses)}`}
+          icon={<TrendingUp className="w-5 h-5" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
+          trend="up" trendLabel="Total Sales" accentColor="hover:border-emerald-500/50" onClick={() => onNavigate('sales')} />
+        <KpiCard title="Customer Receivables" value={formatCurrency(totalAR)} subValue="Outstanding customer credit"
+          icon={<CreditCard className="w-5 h-5" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
+          trend="neutral" trendLabel="Active credit accounts" accentColor="hover:border-blue-500/50" onClick={() => onNavigate('parties')} />
+        <KpiCard title="Supplier Payables" value={formatCurrency(totalAP)} subValue="Outstanding vendor invoices"
+          icon={<Building2 className="w-5 h-5" />} iconBg="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
           trend={totalAP > 0 ? 'down' : 'neutral'} trendLabel="Payables due" accentColor="hover:border-rose-500/50" onClick={() => onNavigate('parties')} />
-        <KpiCard title="Loan Balance" value={formatCurrency(totalLoans)} subValue={`${loans.length} active loans`}
-          icon={<Building2 className="w-4 h-4" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
+        <KpiCard title="Active Loan Balance" value={formatCurrency(totalLoans)} subValue={`${loans.length} active loan agreements`}
+          icon={<Building2 className="w-5 h-5" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
           trend="neutral" trendLabel="Principal remaining" accentColor="hover:border-purple-500/50" onClick={() => onNavigate('finance')} />
-        <KpiCard title="Expenses" value={formatCurrency(totalExpenses)} subValue="Approved this period"
-          icon={<Banknote className="w-4 h-4" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
-          trend="neutral" trendLabel="Operational costs" accentColor="hover:border-amber-500/50" onClick={() => onNavigate('finance')} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <FinancialSummaryWidget period={period} baseRevenue={revenue / m} baseCogs={cogsBase / m} baseExpenses={expBase} totalAR={totalAR} totalAP={totalAP} totalLoans={totalLoans} formatCurrency={formatCurrency} />
 
+        {/* AR Ageing */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-900 dark:text-white text-sm">Receivables Ageing</h3>
+            <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400">Total: {formatCurrency(totalAR)}</span>
+          </div>
+          <div className="space-y-3">
+            {agingBands.map((band, i) => (
+              <div key={i}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">{band.label}</span>
+                  <span className="text-xs font-extrabold text-slate-900 dark:text-white">{formatCurrency(band.value)}</span>
+                </div>
+                <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-700 ${band.color}`}
+                    style={{ width: `${(band.value / maxAging) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-3">
+            <span className="font-bold text-rose-600 dark:text-rose-400">{formatCurrency(agingBands[2].value)}</span> is overdue 60+ days — priority follow-up required.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Loan repayment schedule */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -97,33 +121,6 @@ export const AccountantDashboard: React.FC<AccountantDashboardProps> = ({ onNavi
             ))}
             {loans.length === 0 && <div className="py-6 text-center text-xs text-slate-400">No active loans.</div>}
           </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* AR Ageing */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-slate-900 dark:text-white text-sm">Receivables Ageing</h3>
-            <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400">Total: {formatCurrency(totalAR)}</span>
-          </div>
-          <div className="space-y-3">
-            {agingBands.map((band, i) => (
-              <div key={i}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">{band.label}</span>
-                  <span className="text-xs font-extrabold text-slate-900 dark:text-white">{formatCurrency(band.value)}</span>
-                </div>
-                <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all duration-700 ${band.color}`}
-                    style={{ width: `${(band.value / maxAging) * 100}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-[11px] text-slate-400 mt-3">
-            <span className="font-bold text-rose-600 dark:text-rose-400">{formatCurrency(agingBands[2].value)}</span> is overdue 60+ days — priority follow-up required.
-          </p>
         </div>
 
         {/* Shift reconciliation */}

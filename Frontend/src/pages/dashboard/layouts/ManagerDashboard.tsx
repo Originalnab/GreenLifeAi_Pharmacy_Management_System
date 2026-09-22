@@ -8,6 +8,7 @@ import { usePharmacy } from '../../../context/PharmacyContext';
 import { DashboardFilterBar, FilterPeriod, PERIOD_META } from '../widgets/DashboardFilterBar';
 import { KpiCard } from '../widgets/KpiCard';
 import { SalesBarChart } from '../widgets/SalesBarChart';
+import { RevenueExpenseLineChart } from '../widgets/RevenueExpenseLineChart';
 import { DonutChart } from '../widgets/DonutChart';
 import { ApprovalQueueWidget } from '../widgets/ApprovalQueueWidget';
 import { ExpiryRiskWidget } from '../widgets/ExpiryRiskWidget';
@@ -62,7 +63,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onNavigate }
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-[11px] font-bold uppercase tracking-wider text-emerald-100">Operations Control</span>
+              <span className="px-2.5 py-0.5 rounded-full bg-white/25 backdrop-blur-md text-[11px] font-bold uppercase tracking-wider text-emerald-100">Operations Control</span>
               <span className="text-xs text-brand-200">Greenlife Central Dispensary · Single Branch Active</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight mt-1.5">Welcome, {currentUser.name}</h1>
@@ -80,40 +81,33 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onNavigate }
             </button>
           </div>
         </div>
-        <DashboardFilterBar period={period} onChange={setPeriod} className="opacity-90" />
+        <DashboardFilterBar period={period} onChange={setPeriod} className="mt-1" />
       </div>
 
       {/* KPI Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <KpiCard title="Revenue" value={formatCurrency(revenue)} subValue={`${txCount} transactions`}
-          icon={<TrendingUp className="w-4 h-4" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
-          trend="up" trendLabel={`GP: ${formatCurrency(grossProfit)}`} accentColor="hover:border-emerald-500/50"
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard title="Total Revenue" value={formatCurrency(revenue)} subValue={`${txCount} sales · GP: ${formatCurrency(grossProfit)}`}
+          icon={<TrendingUp className="w-5 h-5" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
+          trend="up" trendLabel={`Margin: ${revenue > 0 ? ((grossProfit / revenue) * 100).toFixed(1) : 0}%`} accentColor="hover:border-emerald-500/50"
           sparkData={sparkRevenue} onClick={() => onNavigate('sales')} />
-        <KpiCard title="Transactions" value={txCount.toLocaleString()} subValue={`Avg: ${formatCurrency(avgTicket)}`}
-          icon={<FileText className="w-4 h-4" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
-          trend="up" trendLabel="vs prior period" accentColor="hover:border-blue-500/50" onClick={() => onNavigate('sales')} />
-        <KpiCard title="Low / Out of Stock" value={`${lowStockCount} Products`} subValue="Below reorder level"
-          icon={<Package className="w-4 h-4" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
-          trend={lowStockCount > 5 ? 'down' : 'neutral'} trendLabel={lowStockCount > 5 ? 'Reorder needed' : 'Manageable'}
+        <KpiCard title="Transaction Volume" value={txCount.toLocaleString()} subValue={`Avg Ticket: ${formatCurrency(avgTicket)}`}
+          icon={<FileText className="w-5 h-5" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
+          trend="up" trendLabel="Active checkout rate" accentColor="hover:border-blue-500/50" onClick={() => onNavigate('sales')} />
+        <KpiCard title="Inventory Alerts" value={`${lowStockCount} Low`} subValue={`${expCount} batches expiring < 60d`}
+          icon={<Package className="w-5 h-5" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
+          trend={lowStockCount > 3 ? 'down' : 'neutral'} trendLabel={lowStockCount > 3 ? 'Reorder needed' : 'Manageable'}
           accentColor="hover:border-amber-500/50" onClick={() => onNavigate('inventory')} />
-        <KpiCard title="Expiring Batches" value={`${expCount} Batches`} subValue="Within 60 days"
-          icon={<Clock className="w-4 h-4" />} iconBg="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
-          trend={expCount > 3 ? 'down' : 'neutral'} trendLabel={expCount > 3 ? 'Action required' : 'Under control'}
-          accentColor="hover:border-rose-500/50" onClick={() => onNavigate('inventory')} />
-        <KpiCard title="Customer AR" value={formatCurrency(totalAR)} subValue="Outstanding credit"
-          icon={<CreditCard className="w-4 h-4" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
-          trend="neutral" trendLabel="View ageing" accentColor="hover:border-purple-500/50" onClick={() => onNavigate('parties')} />
-        <KpiCard title="Today's Expenses" value={formatCurrency(totalExpenses)} subValue="Approved expenses"
-          icon={<Banknote className="w-4 h-4" />} iconBg="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-          trend="neutral" trendLabel="vs budget" accentColor="hover:border-slate-400/50" onClick={() => onNavigate('finance')} />
+        <KpiCard title="Working Capital" value={formatCurrency(totalAR)} subValue={`Supplier AP: ${formatCurrency(totalAP)}`}
+          icon={<CreditCard className="w-5 h-5" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
+          trend="neutral" trendLabel="Receivables / Payables" accentColor="hover:border-purple-500/50" onClick={() => onNavigate('parties')} />
       </div>
 
-      {/* Revenue Chart (full width) */}
-      <SalesBarChart period={period} baseRevenue={todayRevenue} baseCogs={cogsBase} baseExpenses={expBase} formatCurrency={formatCurrency} />
-
-      {/* Main 3-column grid */}
+      {/* Analytics Core: Trend Chart & Payment Mix */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Col 1 — Sales & Products */}
+        <div className="lg:col-span-2 space-y-6">
+          <SalesBarChart period={period} baseRevenue={todayRevenue} baseCogs={cogsBase} baseExpenses={expBase} formatCurrency={formatCurrency} />
+          <RevenueExpenseLineChart period={period} baseRevenue={todayRevenue} baseExpenses={expBase} formatCurrency={formatCurrency} />
+        </div>
         <div className="lg:col-span-1 space-y-6">
           <DonutChart
             title="Payment Method Split"
@@ -128,51 +122,54 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onNavigate }
             centerLabel="Revenue"
             centerValue={formatCurrency(revenue)}
           />
-          <StockOverviewWidget products={products} onNavigate={onNavigate} formatCurrency={formatCurrency} />
-        </div>
-
-        {/* Col 2 — Purchasing & Suppliers */}
-        <div className="lg:col-span-1 space-y-6">
-          <PurchasePipelineWidget purchaseOrders={purchaseOrders} onNavigate={onNavigate} formatCurrency={formatCurrency} />
-
-          {/* Supplier balances */}
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 dark:text-white text-sm">Supplier Balances (AP)</h3>
-              <span className="text-xs font-extrabold text-rose-600 dark:text-rose-400">{formatCurrency(totalAP)}</span>
-            </div>
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {suppliers.slice(0, 4).map(sup => (
-                <div key={sup.id} className="px-4 py-3 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-400 to-clinical-500 flex items-center justify-center text-white text-xs font-extrabold flex-shrink-0">
-                    {sup.name.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{sup.name}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">{sup.paymentTermsDays}d terms</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-xs font-extrabold ${(sup.outstandingBalance ?? 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      {formatCurrency(sup.outstandingBalance ?? 0)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Col 3 — Approvals + Financials */}
-        <div className="lg:col-span-1 space-y-6">
-          <ApprovalQueueWidget approvals={approvals} onApprove={approveRequest} onReject={rejectRequest} formatCurrency={formatCurrency} />
           <FinancialSummaryWidget period={period} baseRevenue={todayRevenue} baseCogs={cogsBase} baseExpenses={expBase} totalAR={totalAR} totalAP={totalAP} totalLoans={totalLoans} formatCurrency={formatCurrency} />
         </div>
       </div>
 
-      {/* Expiry Risk + Recommendations */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ExpiryRiskWidget batches={batches} onNavigate={onNavigate} />
-        <RecommendationsPanel recommendations={recommendations} />
+      {/* Operational Matrix (3-card balanced triad) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <StockOverviewWidget products={products} onNavigate={onNavigate} formatCurrency={formatCurrency} />
+        <PurchasePipelineWidget purchaseOrders={purchaseOrders} onNavigate={onNavigate} formatCurrency={formatCurrency} />
+        <ApprovalQueueWidget approvals={approvals} onApprove={approveRequest} onReject={rejectRequest} formatCurrency={formatCurrency} />
+      </div>
+
+      {/* Supplier Balances + Expiry Risk & Recommendations */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Supplier balances */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col lg:col-span-1">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <h3 className="font-bold text-slate-900 dark:text-white text-sm">Supplier Balances (AP)</h3>
+            <span className="text-xs font-extrabold text-rose-600 dark:text-rose-400">{formatCurrency(totalAP)}</span>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800 flex-1">
+            {suppliers.slice(0, 5).map(sup => (
+              <div key={sup.id} className="px-4 py-3 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-400 to-clinical-500 flex items-center justify-center text-white text-xs font-extrabold flex-shrink-0">
+                  {sup.name.charAt(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{sup.name}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{sup.paymentTermsDays}d terms</p>
+                </div>
+                <div className="text-right">
+                  <p className={`text-xs font-extrabold ${(sup.outstandingBalance ?? 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                    {formatCurrency(sup.outstandingBalance ?? 0)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Expiry Risk */}
+        <div className="lg:col-span-1">
+          <ExpiryRiskWidget batches={batches} onNavigate={onNavigate} />
+        </div>
+
+        {/* Recommendations */}
+        <div className="lg:col-span-1">
+          <RecommendationsPanel recommendations={recommendations} />
+        </div>
       </div>
 
       {/* Top Products Table */}

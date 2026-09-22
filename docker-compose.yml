@@ -1,0 +1,96 @@
+services:
+  # --------------------------------------------------------------------------
+  # 1. PostgreSQL 16 Relational Database Engine (Authoritative Persistence)
+  # --------------------------------------------------------------------------
+  database:
+    image: postgres:16-alpine
+    container_name: greenlifeai_postgres
+    environment:
+      POSTGRES_DB: greenlife_pharmacy_db
+      POSTGRES_USER: greenlife_admin
+      POSTGRES_PASSWORD: GreenlifeSecret2026!
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greenlife_admin -d greenlife_pharmacy_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - greenlife_net
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
+  # 2. Redis Cache & Asynchronous Task Queue
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: greenlifeai_redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - greenlife_net
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
+  # 3. GreenLife AI Backend (Django REST Framework / Gunicorn WSGI)
+  # --------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: greenlifeai_backend
+    volumes:
+      - ./Backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=0
+      - SECRET_KEY=django-insecure-greenlife-ai-pharma-suite-2026-secret-key-prod
+      - DB_NAME=greenlife_pharmacy_db
+      - DB_USER=greenlife_admin
+      - DB_PASSWORD=GreenlifeSecret2026!
+      - DB_HOST=database
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - ALLOWED_HOSTS=*
+      - CORS_ALLOW_ALL_ORIGINS=1
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - greenlife_net
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
+  # 4. GreenLife AI Frontend (React 19 / Nginx Web Server & Reverse Proxy)
+  # --------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: greenlifeai_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - greenlife_net
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    name: greenlifeai_postgres_volume
+
+networks:
+  greenlife_net:
+    name: greenlifeai_internal_network

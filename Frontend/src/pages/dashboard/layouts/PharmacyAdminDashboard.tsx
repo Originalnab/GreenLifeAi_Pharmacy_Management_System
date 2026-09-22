@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Users, Key, Clock, Shield, Settings, Activity } from 'lucide-react';
 import { usePharmacy } from '../../../context/PharmacyContext';
+import { isDemoUser } from '../../../types';
 import { DashboardFilterBar, FilterPeriod } from '../widgets/DashboardFilterBar';
 import { KpiCard } from '../widgets/KpiCard';
 import { ApprovalQueueWidget } from '../widgets/ApprovalQueueWidget';
@@ -10,23 +11,26 @@ interface PharmacyAdminDashboardProps { onNavigate: (tab: string) => void }
 
 export const PharmacyAdminDashboard: React.FC<PharmacyAdminDashboardProps> = ({ onNavigate }) => {
   const [period, setPeriod] = useState<FilterPeriod>('today');
-  const { users, customRoles, approvals, approveRequest, rejectRequest, auditLogs, currentUser, formatCurrency } = usePharmacy();
+  const { users, customRoles, approvals, approveRequest, rejectRequest, auditLogs, currentUser, formatCurrency, operatingMode } = usePharmacy();
 
-  const activeUsers    = users.filter(u => u.active).length;
-  const inactiveUsers  = users.filter(u => !u.active).length;
+  const isDemo = operatingMode === 'DEMO';
+  const staffAccounts  = users.filter(u => isDemo || !isDemoUser(u));
+  const activeUsers    = staffAccounts.filter(u => u.active).length;
+  const inactiveUsers  = staffAccounts.filter(u => !u.active).length;
   const pendingCount   = approvals.filter(a => a.status === 'PENDING').length;
   const permChanges    = auditLogs.filter(l => l.module === 'administration').length;
 
   const roleStats = [
     'Super Admin','Pharmacy Admin','Manager','Pharmacist','Cashier',
-    'Stock Officer','Procurement Officer','Accountant','Auditor',
+    'Sales Person','Stock Officer','Procurement Officer','Accountant','Auditor',
   ].map(role => ({
     role,
-    count: users.filter(u => u.role === role).length,
+    count: staffAccounts.filter(u => u.role === role).length,
     color: role === 'Super Admin' ? 'bg-slate-700 text-slate-100' :
            role === 'Manager' ? 'bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300' :
            role === 'Pharmacist' ? 'bg-clinical-100 dark:bg-clinical-950 text-clinical-700 dark:text-clinical-300' :
            role === 'Cashier' ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300' :
+           role === 'Sales Person' ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' :
            'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400',
   }));
 
@@ -49,23 +53,22 @@ export const PharmacyAdminDashboard: React.FC<PharmacyAdminDashboardProps> = ({ 
             </button>
           </div>
         </div>
-        <DashboardFilterBar period={period} onChange={setPeriod} className="opacity-80" />
+        <DashboardFilterBar period={period} onChange={setPeriod} className="mt-1" />
       </div>
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard title="Active Staff" value={`${activeUsers} Active`} subValue={`${inactiveUsers} inactive`}
-          icon={<Users className="w-4 h-4" />} iconBg="bg-violet-50 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400"
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard title="Active Staff" value={`${activeUsers} Active`} subValue={`${inactiveUsers} inactive accounts`}
+          icon={<Users className="w-5 h-5" />} iconBg="bg-violet-50 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400"
           trend="neutral" trendLabel="All roles assigned" accentColor="hover:border-violet-500/50" onClick={() => onNavigate('administration')} />
-        <KpiCard title="Custom Roles" value={`${customRoles.length} Defined`} subValue="Role templates"
-          icon={<Key className="w-4 h-4" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
-          trend="neutral" trendLabel="Configurable" accentColor="hover:border-blue-500/50" />
-        <KpiCard title="Pending Approvals" value={`${pendingCount} Pending`} subValue="Awaiting decision"
-          icon={<Clock className="w-4 h-4" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
-          trend={pendingCount > 3 ? 'down' : 'neutral'} trendLabel={pendingCount > 3 ? 'Review now' : 'In control'} accentColor="hover:border-amber-500/50" />
-        <KpiCard title="Permission Changes" value={`${permChanges}`} subValue="Audit events"
-          icon={<Shield className="w-4 h-4" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
-          trend="neutral" trendLabel="All logged" accentColor="hover:border-emerald-500/50" onClick={() => onNavigate('audit')} />
+        <KpiCard title="Custom Roles" value={`${customRoles.length} Defined`} subValue="RBAC permission templates"
+          icon={<Key className="w-5 h-5" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
+          trend="neutral" trendLabel="Configurable access" accentColor="hover:border-blue-500/50" />
+        <KpiCard title="Pending Approvals" value={`${pendingCount} Pending`} subValue="Manager overrides queued"
+          icon={<Clock className="w-5 h-5" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
+          trend={pendingCount > 3 ? 'down' : 'neutral'} trendLabel={pendingCount > 3 ? 'Review required' : 'In control'} accentColor="hover:border-amber-500/50" />
+        <KpiCard title="Permission Changes" value={`${permChanges}`} subValue="Recorded security events"
+          icon={<Shield className="w-5 h-5" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
+          trend="neutral" trendLabel="Audit log current" accentColor="hover:border-emerald-500/50" onClick={() => onNavigate('audit')} />
       </div>
 
       {/* Main Grid */}
@@ -88,7 +91,7 @@ export const PharmacyAdminDashboard: React.FC<PharmacyAdminDashboardProps> = ({ 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {users.map(u => (
+                  {staffAccounts.map(u => (
                     <tr key={u.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">

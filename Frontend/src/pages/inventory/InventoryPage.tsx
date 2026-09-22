@@ -2,18 +2,22 @@ import React, { useState, useRef } from 'react';
 import { 
   Boxes, Clock, ShieldAlert, History, ClipboardCheck, 
   AlertTriangle, Trash2, ArrowUpDown, Search, CheckCircle2, X, FileSpreadsheet,
-  Plus, Info, BookOpen, HelpCircle, PackageCheck, Sparkles, ShieldCheck
+  Plus, Info, BookOpen, HelpCircle, PackageCheck, Sparkles, ShieldCheck,
+  Calendar, TrendingUp, RefreshCw
 } from 'lucide-react';
 import { usePharmacy } from '../../context/PharmacyContext';
 import { Batch } from '../../types';
 import { FloatingBulkActionBar } from '../../components/common/FloatingBulkActionBar';
 import { WorkflowGuideNotice } from '../../components/common/WorkflowGuideNotice';
 import { FieldGuideNotice } from '../../components/common/FieldGuideNotice';
+import { Pagination } from '../../components/common/Pagination';
+import { usePagination } from '../../hooks/usePagination';
 
 export const InventoryPage: React.FC = () => {
   const { 
     batches, stockMovements, quarantineBatch, disposeBatch, 
-    products, currentUser, formatCurrency, currentCurrency, receiveStock
+    products, currentUser, formatCurrency, currentCurrency, receiveStock,
+    toast, confirmDialog
   } = usePharmacy();
   const [activeTab, setActiveTab] = useState<'batches' | 'ledger' | 'quarantine' | 'counts'>('batches');
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,20 +38,222 @@ export const InventoryPage: React.FC = () => {
   const [showDisposeModal, setShowDisposeModal] = useState(false);
   const [disposeReason, setDisposeReason] = useState('');
 
-  // Manual Stock Intake / Adjustment Modal State
+  // Manual Stock Intake / Multi-Product Adjustment Modal State
   const [showIntakeModal, setShowIntakeModal] = useState(false);
-  const [intakeForm, setIntakeForm] = useState({
-    productId: products[0]?.id || '',
-    batchNumber: 'STK-2026-001',
-    mfgDate: '2026-03-01',
-    expDate: '2028-06-30',
-    qty: 100,
-    unitCost: products[0]?.unitCost || 18.00,
-    sellingPrice: products[0]?.sellingPrice || 30.00,
-    storageLocation: 'Dispensary Shelf A-01',
+  const [updateMasterSellingPrice, setUpdateMasterSellingPrice] = useState(true);
+  const [intakeMeta, setIntakeMeta] = useState({
     adjustmentType: 'INITIAL_ONBOARDING',
-    reason: 'Initial opening stock onboarding count reconciliation.'
+    reason: 'Initial opening stock onboarding count reconciliation.',
+    defaultLocation: 'Dispensary Shelf A-01'
   });
+
+  interface IntakeRow {
+    id: string;
+    productId: string;
+    batchNumber: string;
+    mfgDate: string;
+    expDate: string;
+    intakeUnitType: 'PACK' | 'BASE';
+    packQty: number;
+    packCost: number;
+    packSellingPrice: number;
+    qty: number;
+    unitCost: number;
+    sellingPrice: number;
+    storageLocation: string;
+  }
+
+  const [intakeRows, setIntakeRows] = useState<IntakeRow[]>([]);
+
+  // Automated Batch / Lot Number Generator
+  const generateAutoBatchNumber = (prodName?: string) => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    let prefix = 'LOT';
+    if (prodName) {
+      const clean = prodName.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3);
+      if (clean.length >= 2) prefix = clean;
+    }
+    const rand = Math.floor(100 + Math.random() * 900);
+    return `${prefix}-${y}${m}${d}-${rand}`;
+  };
+
+  // Helper to open intake modal with initial rows if empty
+  const handleOpenIntakeModal = () => {
+    if (intakeRows.length === 0 && products.length > 0) {
+      const today = new Date();
+      const mfg = new Date(today.getFullYear(), today.getMonth() - 2, 1).toISOString().slice(0, 10);
+      const exp = new Date(today.getFullYear() + 2, today.getMonth() + 4, 28).toISOString().slice(0, 10);
+      const p1 = products[0];
+      const p2 = products[1] || products[0];
+
+      const p1Pack = p1.packagingTiers?.find(t => t.tierType === 'PACK');
+      const p1Mult = p1Pack?.multiplier || 10;
+      const p1HasPack = !!p1Pack;
+      const p1PackCost = p1Pack?.costPrice || Number(((p1.unitCost || 18.00) * p1Mult).toFixed(2));
+      const p1PackSelling = p1Pack?.sellingPrice || Number(((p1.sellingPrice || 30.00) * p1Mult).toFixed(2));
+
+      const p2Pack = p2.packagingTiers?.find(t => t.tierType === 'PACK');
+      const p2Mult = p2Pack?.multiplier || 10;
+      const p2HasPack = !!p2Pack;
+      const p2PackCost = p2Pack?.costPrice || Number(((p2.unitCost || 25.00) * p2Mult).toFixed(2));
+      const p2PackSelling = p2Pack?.sellingPrice || Number(((p2.sellingPrice || 40.00) * p2Mult).toFixed(2));
+      
+      setIntakeRows([
+        {
+          id: `row_1`,
+          productId: p1.id,
+          batchNumber: generateAutoBatchNumber(p1.brandName),
+          mfgDate: mfg,
+          expDate: exp,
+          intakeUnitType: (p1HasPack ? 'PACK' : 'BASE') as 'PACK' | 'BASE',
+          packQty: p1HasPack ? 10 : 1,
+          packCost: p1PackCost,
+          packSellingPrice: p1PackSelling,
+          qty: p1HasPack ? 10 * p1Mult : 100,
+          unitCost: p1.unitCost || 18.00,
+          sellingPrice: p1.sellingPrice || 30.00,
+          storageLocation: 'Dispensary Shelf A-01'
+        },
+        ...(products.length > 1 ? [{
+          id: `row_2`,
+          productId: p2.id,
+          batchNumber: generateAutoBatchNumber(p2.brandName),
+          mfgDate: mfg,
+          expDate: exp,
+          intakeUnitType: (p2HasPack ? 'PACK' : 'BASE') as 'PACK' | 'BASE',
+          packQty: p2HasPack ? 5 : 1,
+          packCost: p2PackCost,
+          packSellingPrice: p2PackSelling,
+          qty: p2HasPack ? 5 * p2Mult : 50,
+          unitCost: p2.unitCost || 25.00,
+          sellingPrice: p2.sellingPrice || 40.00,
+          storageLocation: 'Dispensary Shelf B-02'
+        }] : [])
+      ]);
+    }
+    setShowIntakeModal(true);
+  };
+
+  const handleAddIntakeRow = () => {
+    const today = new Date();
+    const mfg = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().slice(0, 10);
+    const exp = new Date(today.getFullYear() + 2, today.getMonth() + 3, 28).toISOString().slice(0, 10);
+    const prod = products[intakeRows.length % products.length] || products[0];
+
+    const packTier = prod?.packagingTiers?.find(t => t.tierType === 'PACK');
+    const mult = packTier?.multiplier || 10;
+    const hasPack = !!packTier;
+    const packCost = packTier?.costPrice || Number(((prod?.unitCost || 18.00) * mult).toFixed(2));
+    const packSelling = packTier?.sellingPrice || Number(((prod?.sellingPrice || 30.00) * mult).toFixed(2));
+
+    setIntakeRows(prev => [
+      ...prev,
+      {
+        id: `row_${Date.now()}_${Math.random()}`,
+        productId: prod?.id || '',
+        batchNumber: generateAutoBatchNumber(prod?.brandName),
+        mfgDate: mfg,
+        expDate: exp,
+        intakeUnitType: (hasPack ? 'PACK' : 'BASE') as 'PACK' | 'BASE',
+        packQty: hasPack ? 5 : 1,
+        packCost: packCost,
+        packSellingPrice: packSelling,
+        qty: hasPack ? 5 * mult : 50,
+        unitCost: prod?.unitCost || 18.00,
+        sellingPrice: prod?.sellingPrice || 30.00,
+        storageLocation: intakeMeta.defaultLocation || 'Dispensary Shelf A-01'
+      }
+    ]);
+  };
+
+  const handleRemoveIntakeRow = (id: string) => {
+    setIntakeRows(prev => prev.filter(r => r.id !== id));
+  };
+
+  const handleUpdateIntakeRow = (id: string, field: keyof IntakeRow, value: any) => {
+    setIntakeRows(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      if (field === 'productId') {
+        const prod = products.find(p => p.id === value);
+        const packTier = prod?.packagingTiers?.find(t => t.tierType === 'PACK');
+        const mult = packTier?.multiplier || 10;
+        const hasPack = !!packTier;
+        const packCost = packTier?.costPrice || Number(((prod?.unitCost || 18.00) * mult).toFixed(2));
+        const packSelling = packTier?.sellingPrice || Number(((prod?.sellingPrice || 30.00) * mult).toFixed(2));
+        return {
+          ...r,
+          productId: value,
+          batchNumber: generateAutoBatchNumber(prod?.brandName),
+          intakeUnitType: (hasPack ? 'PACK' : 'BASE') as 'PACK' | 'BASE',
+          packQty: hasPack ? 5 : 1,
+          packCost: packCost,
+          packSellingPrice: packSelling,
+          qty: hasPack ? 5 * mult : 50,
+          unitCost: prod ? prod.unitCost : r.unitCost,
+          sellingPrice: prod ? prod.sellingPrice : r.sellingPrice
+        };
+      }
+      if (field === 'intakeUnitType') {
+        const prod = products.find(p => p.id === r.productId);
+        const packTier = prod?.packagingTiers?.find(t => t.tierType === 'PACK');
+        const mult = packTier?.multiplier || 10;
+        if (value === 'PACK') {
+          const pCost = r.packCost || Number((r.unitCost * mult).toFixed(2));
+          const pSell = r.packSellingPrice || Number((r.sellingPrice * mult).toFixed(2));
+          const pQty = r.packQty > 0 ? r.packQty : Math.max(1, Math.round(r.qty / mult));
+          return {
+            ...r,
+            intakeUnitType: 'PACK',
+            packQty: pQty,
+            packCost: pCost,
+            packSellingPrice: pSell,
+            qty: pQty * mult,
+            unitCost: mult > 0 ? Number((pCost / mult).toFixed(2)) : r.unitCost,
+            sellingPrice: mult > 0 ? Number((pSell / mult).toFixed(2)) : r.sellingPrice
+          };
+        } else {
+          return {
+            ...r,
+            intakeUnitType: 'BASE'
+          };
+        }
+      }
+      if (field === 'packQty') {
+        const num = Math.max(0, parseInt(value) || 0);
+        const prod = products.find(p => p.id === r.productId);
+        const mult = prod?.packagingTiers?.find(t => t.tierType === 'PACK')?.multiplier || 10;
+        return { ...r, packQty: num, qty: num * mult };
+      }
+      if (field === 'packCost') {
+        const cost = Math.max(0, parseFloat(value) || 0);
+        const prod = products.find(p => p.id === r.productId);
+        const mult = prod?.packagingTiers?.find(t => t.tierType === 'PACK')?.multiplier || 10;
+        return { ...r, packCost: cost, unitCost: mult > 0 ? Number((cost / mult).toFixed(2)) : cost };
+      }
+      if (field === 'packSellingPrice') {
+        const sell = Math.max(0, parseFloat(value) || 0);
+        const prod = products.find(p => p.id === r.productId);
+        const mult = prod?.packagingTiers?.find(t => t.tierType === 'PACK')?.multiplier || 10;
+        return { ...r, packSellingPrice: sell, sellingPrice: mult > 0 ? Number((sell / mult).toFixed(2)) : sell };
+      }
+      if (field === 'qty') {
+        const num = Math.max(0, parseInt(value) || 0);
+        return { ...r, qty: num };
+      }
+      if (field === 'unitCost') {
+        const cost = Math.max(0, parseFloat(value) || 0);
+        return { ...r, unitCost: cost };
+      }
+      if (field === 'sellingPrice') {
+        const sell = Math.max(0, parseFloat(value) || 0);
+        return { ...r, sellingPrice: sell };
+      }
+      return { ...r, [field]: value };
+    }));
+  };
 
   // Stock count demo state
   const [countItems, setCountItems] = useState([
@@ -59,21 +265,52 @@ export const InventoryPage: React.FC = () => {
 
   const handleCommitIntake = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!intakeForm.batchNumber.trim()) {
-      alert('Please specify a valid manufacturer batch / lot code.');
+    if (intakeRows.length === 0) {
+      toast.warning('Please add at least one product line to record stock intake.', 'Missing Product Lines');
       return;
     }
+    for (let i = 0; i < intakeRows.length; i++) {
+      const row = intakeRows[i];
+      if (!row.productId) {
+        toast.warning(`Please select a valid medicine formulation on row #${i + 1}.`, 'Incomplete Line');
+        return;
+      }
+      if (!row.batchNumber.trim()) {
+        toast.warning(`Please specify a manufacturer batch/lot number on row #${i + 1}.`, 'Batch Number Required');
+        return;
+      }
+      if (!row.qty || row.qty <= 0) {
+        toast.warning(`Please specify a valid quantity greater than 0 on row #${i + 1}.`, 'Invalid Quantity');
+        return;
+      }
+    }
+
     const refCode = `ADJ-${Date.now().toString().slice(-4)}`;
-    receiveStock(refCode, [{
-      productId: intakeForm.productId,
-      batchNumber: intakeForm.batchNumber,
-      mfgDate: intakeForm.mfgDate,
-      expDate: intakeForm.expDate,
-      qty: intakeForm.qty,
-      unitCost: intakeForm.unitCost,
-      sellingPrice: intakeForm.sellingPrice
-    }]);
-    alert(`Stock record ${refCode} successfully posted to active inventory and immutable movement ledger!`);
+    receiveStock(refCode, intakeRows.map(r => {
+      const prod = products.find(p => p.id === r.productId);
+      let packagingTiers = updateMasterSellingPrice ? prod?.packagingTiers : undefined;
+      if (updateMasterSellingPrice && r.intakeUnitType === 'PACK' && packagingTiers) {
+        packagingTiers = packagingTiers.map(t => {
+          if (t.tierType === 'PACK') {
+            return { ...t, costPrice: r.packCost, sellingPrice: r.packSellingPrice };
+          }
+          return t;
+        });
+      }
+      return {
+        productId: r.productId,
+        batchNumber: r.batchNumber,
+        mfgDate: r.mfgDate,
+        expDate: r.expDate,
+        qty: r.qty,
+        unitCost: r.unitCost,
+        sellingPrice: r.sellingPrice,
+        packagingTiers,
+        updateMasterSellingPrice
+      };
+    }));
+
+    toast.success(`Successfully recorded stock intake for ${intakeRows.length} product lines under reference ${refCode}!`, 'Stock Intake Recorded');
     setShowIntakeModal(false);
   };
 
@@ -93,6 +330,30 @@ export const InventoryPage: React.FC = () => {
   const quarantinedBatches = batches.filter(b => 
     b.status === 'QUARANTINED' || b.status === 'EXPIRED' || b.status === 'DISPOSED'
   );
+
+  const {
+    currentPage: batchesPage,
+    setCurrentPage: setBatchesPage,
+    paginatedItems: paginatedBatches,
+  } = usePagination(filteredBatches, 10, [searchTerm, batchStatusFilter]);
+
+  const {
+    currentPage: movementsPage,
+    setCurrentPage: setMovementsPage,
+    paginatedItems: paginatedMovements,
+  } = usePagination(filteredMovements, 10, [movementTypeFilter]);
+
+  const {
+    currentPage: quarantinePage,
+    setCurrentPage: setQuarantinePage,
+    paginatedItems: paginatedQuarantine,
+  } = usePagination(quarantinedBatches, 10);
+
+  const {
+    currentPage: countItemsPage,
+    setCurrentPage: setCountItemsPage,
+    paginatedItems: paginatedCountItems,
+  } = usePagination(countItems, 10);
 
   // Batch selection handlers
   const isAllBatchesSelected = filteredBatches.length > 0 && filteredBatches.every(b => selectedBatchIds.includes(b.id));
@@ -177,11 +438,12 @@ export const InventoryPage: React.FC = () => {
 
   const handleQuarantine = () => {
     if (!quarantineReason.trim()) {
-      alert('Please specify the quarantine reason.');
+      toast.warning('Please specify the quarantine reason.', 'Reason Required');
       return;
     }
     if (selectedBatch) {
       quarantineBatch(selectedBatch.id, quarantineReason);
+      toast.warning(`Batch ${selectedBatch.batchNumber} has been quarantined: "${quarantineReason}"`, 'Batch Quarantined');
       setShowQuarantineModal(false);
       setQuarantineReason('');
     }
@@ -189,11 +451,12 @@ export const InventoryPage: React.FC = () => {
 
   const handleDispose = () => {
     if (!disposeReason.trim()) {
-      alert('Please specify the disposal reason and destruction witness.');
+      toast.warning('Please specify the disposal reason and destruction witness.', 'Disposal Details Required');
       return;
     }
     if (selectedBatch) {
       disposeBatch(selectedBatch.id, disposeReason);
+      toast.error(`Batch ${selectedBatch.batchNumber} logged for destruction disposal.`, 'Batch Disposed');
       setShowDisposeModal(false);
       setDisposeReason('');
     }
@@ -215,7 +478,7 @@ export const InventoryPage: React.FC = () => {
 
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => setShowIntakeModal(true)}
+            onClick={handleOpenIntakeModal}
             className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 flex items-center space-x-1.5 transition shrink-0"
           >
             <Plus className="w-4 h-4" />
@@ -408,7 +671,7 @@ export const InventoryPage: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredBatches.map((batch, index) => {
+                    paginatedBatches.map((batch, index) => {
                       const isSelected = selectedBatchIds.includes(batch.id);
                       return (
                         <tr 
@@ -428,7 +691,7 @@ export const InventoryPage: React.FC = () => {
                                 className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-700 cursor-pointer"
                               />
                               <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 w-5 text-right">
-                                {index + 1}
+                                {(batchesPage - 1) * 10 + index + 1}
                               </span>
                             </div>
                           </td>
@@ -490,6 +753,14 @@ export const InventoryPage: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            <Pagination
+              currentPage={batchesPage}
+              totalItems={filteredBatches.length}
+              pageSize={10}
+              onPageChange={setBatchesPage}
+              itemName="batches"
+            />
           </div>
 
           {/* Floating Bulk Action Bar for Batches */}
@@ -577,7 +848,7 @@ export const InventoryPage: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredMovements.map((mov, index) => {
+                    paginatedMovements.map((mov, index) => {
                       const isSelected = selectedLedgerIds.includes(mov.id);
                       return (
                         <tr 
@@ -597,7 +868,7 @@ export const InventoryPage: React.FC = () => {
                                 className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-700 cursor-pointer"
                               />
                               <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 w-5 text-right">
-                                {index + 1}
+                                {(movementsPage - 1) * 10 + index + 1}
                               </span>
                             </div>
                           </td>
@@ -629,6 +900,14 @@ export const InventoryPage: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            <Pagination
+              currentPage={movementsPage}
+              totalItems={filteredMovements.length}
+              pageSize={10}
+              onPageChange={setMovementsPage}
+              itemName="ledger movements"
+            />
           </div>
 
           {/* Floating Bulk Action Bar for Ledger */}
@@ -699,7 +978,7 @@ export const InventoryPage: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  quarantinedBatches.map((b, index) => {
+                  paginatedQuarantine.map((b, index) => {
                     const isSelected = selectedQuarantineIds.includes(b.id);
                     return (
                       <tr 
@@ -723,7 +1002,7 @@ export const InventoryPage: React.FC = () => {
                               className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-700 cursor-pointer"
                             />
                             <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 w-5 text-right">
-                              {index + 1}
+                              {(quarantinePage - 1) * 10 + index + 1}
                             </span>
                           </div>
                         </td>
@@ -757,6 +1036,14 @@ export const InventoryPage: React.FC = () => {
             </table>
           </div>
 
+          <Pagination
+            currentPage={quarantinePage}
+            totalItems={quarantinedBatches.length}
+            pageSize={10}
+            onPageChange={setQuarantinePage}
+            itemName="quarantined items"
+          />
+
           <FloatingBulkActionBar
             selectedCount={selectedQuarantineIds.length}
             totalCount={quarantinedBatches.length}
@@ -765,7 +1052,7 @@ export const InventoryPage: React.FC = () => {
               {
                 label: 'Export Isolation List',
                 icon: FileSpreadsheet,
-                onClick: () => alert(`Exporting ${selectedQuarantineIds.length} isolated batch records`),
+                onClick: () => toast.info(`Exporting ${selectedQuarantineIds.length} isolated batch records...`, 'Export Started'),
                 variant: 'secondary'
               }
             ]}
@@ -783,9 +1070,18 @@ export const InventoryPage: React.FC = () => {
             </div>
             {!isCountPosted ? (
               <button
-                onClick={() => {
-                  setIsCountPosted(true);
-                  alert('Stock count session posted. Discrepancy of -2 units Coartem written off to ledger.');
+                onClick={async () => {
+                  const ok = await confirmDialog({
+                    title: 'Post Stock Count Variance',
+                    message: 'Commit this cycle count session? Discrepancy of -2 units Coartem will be written off to the inventory ledger.',
+                    variant: 'warning',
+                    confirmText: 'Post Variance',
+                    cancelText: 'Cancel'
+                  });
+                  if (ok) {
+                    setIsCountPosted(true);
+                    toast.success('Stock count session posted. Discrepancy written off to ledger.', 'Audit Committed');
+                  }
                 }}
                 className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow"
               >
@@ -828,11 +1124,11 @@ export const InventoryPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {countItems.map((item, i) => {
+              {paginatedCountItems.map((item, i) => {
                 const isSelected = selectedCountIds.includes(item.id);
                 return (
                   <tr 
-                    key={i}
+                    key={item.id}
                     className={`transition-colors ${
                       isSelected 
                         ? 'bg-brand-50/70 dark:bg-brand-950/40 border-l-2 border-l-brand-600' 
@@ -852,7 +1148,7 @@ export const InventoryPage: React.FC = () => {
                           className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-700 cursor-pointer"
                         />
                         <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 w-5 text-right">
-                          {i + 1}
+                          {(countItemsPage - 1) * 10 + i + 1}
                         </span>
                       </div>
                     </td>
@@ -863,299 +1159,528 @@ export const InventoryPage: React.FC = () => {
                         type="number"
                         disabled={isCountPosted}
                         value={item.counted}
-                        onChange={e => {
-                          const val = parseInt(e.target.value) || 0;
+                        onChange={(e) => {
                           const updated = [...countItems];
-                          updated[i].counted = val;
-                          updated[i].variance = val - updated[i].expected;
-                          setCountItems(updated);
+                          const targetIdx = countItems.findIndex(c => c.id === item.id);
+                          if (targetIdx !== -1) {
+                            updated[targetIdx].counted = Number(e.target.value);
+                            setCountItems(updated);
+                          }
                         }}
-                        className="w-20 px-2 py-1 border rounded bg-slate-50 dark:bg-slate-800 font-mono font-bold"
+                        className="w-20 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold"
                       />
                     </td>
-                    <td className={`p-3 font-bold font-mono ${item.variance === 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {item.variance === 0 ? '0 (Match)' : `${item.variance} units`}
+                    <td className="p-3 font-mono font-bold">
+                      <span className={item.counted - item.expected < 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                        {item.counted - item.expected > 0 ? `+${item.counted - item.expected}` : item.counted - item.expected}
+                      </span>
                     </td>
                     <td className="p-3">
-                      {item.variance === 0 ? (
-                        <span className="text-emerald-600 font-bold">Exact Match</span>
-                      ) : (
-                        <span className="text-rose-600 font-bold">Discrepancy</span>
-                      )}
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        item.counted === item.expected ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                      }`}>
+                        {item.counted === item.expected ? 'BALANCED' : 'VARIANCE'}
+                      </span>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+
+          <Pagination
+            currentPage={countItemsPage}
+            totalItems={countItems.length}
+            pageSize={10}
+            onPageChange={setCountItemsPage}
+            itemName="audit count items"
+          />
         </div>
       )}
 
-      {/* MODAL 1: RECORD MANUAL STOCK INTAKE / ADJUSTMENT */}
+      {/* MODAL 1: RECORD MANUAL STOCK INTAKE / MULTI-PRODUCT ADJUSTMENT (LANDSCAPE) */}
       {showIntakeModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <form onSubmit={handleCommitIntake} className="bg-white dark:bg-slate-900 rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-3">
-              <div>
-                <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center space-x-2">
-                  <Boxes className="w-5 h-5 text-brand-600" />
-                  <span>Record Stock Intake / Adjustment</span>
-                </h3>
-                <p className="text-xs text-slate-500">Manually onboard opening inventory, adjust audit variances, or log stock movements</p>
-              </div>
-              <button type="button" onClick={() => setShowIntakeModal(false)}><X className="w-4 h-4" /></button>
-            </div>
-
-            {/* In-Modal Guidance */}
-            <WorkflowGuideNotice
-              compact
-              title="Purpose of Stock Intake & Adjustments"
-              badge="Stock Ledger Protocol"
-              icon={Info}
-              summary="Updates shelf stock balances outside the standard PO workflow (e.g. for opening balance onboarding, donations, or physical audit adjustments). Automatically writes an immutable audit record."
-            />
-
-            <div className="space-y-3.5 text-xs">
-              {/* Field 1: Medicine Formulation */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-semibold text-slate-800 dark:text-slate-200">
-                    Medicine Formulation <span className="text-rose-500">*</span>
-                  </label>
-                  <span className="text-[10px] text-slate-400">Registered Formulary Product</span>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <form onSubmit={handleCommitIntake} className="bg-white dark:bg-slate-900 rounded-2xl max-w-7xl w-full p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[95vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b pb-3 shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-100 dark:bg-brand-950 text-brand-600 dark:text-brand-400 flex items-center justify-center">
+                  <Boxes className="w-5 h-5" />
                 </div>
-                <select
-                  value={intakeForm.productId}
-                  onChange={e => {
-                    const p = products.find(prod => prod.id === e.target.value);
-                    setIntakeForm({
-                      ...intakeForm,
-                      productId: e.target.value,
-                      unitCost: p ? p.unitCost : 18,
-                      sellingPrice: p ? p.sellingPrice : 30
-                    });
-                  }}
-                  className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-semibold focus:ring-2 focus:ring-brand-500"
-                >
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.brandName} ({p.genericName}) - Current: {p.availableQuantity} in stock</option>
-                  ))}
-                </select>
-                <FieldGuideNotice label="Read formulary item & examples" title="Registered Formulary Product">
-                  <p>Select the registered medicine whose balance will be updated.</p>
-                  <p className="mt-1">
-                    <strong>Examples:</strong> <code className="font-mono text-brand-600 bg-brand-50 dark:bg-brand-950 px-1 rounded">Amoxil Forte 500mg</code> or <code className="font-mono text-brand-600 bg-brand-50 dark:bg-brand-950 px-1 rounded">Panadol Extra 500mg</code>.
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center space-x-2">
+                    <span>Record Stock Intake & Multi-Product Adjustment</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300">
+                      Landscape Intake Mode
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Onboard opening stock batches, adjust physical counts, and calculate retail profit margins across multiple medicines
                   </p>
-                </FieldGuideNotice>
-              </div>
-
-              {/* Field 2 & 3: Batch Number & Adjustment Type */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-800 dark:text-slate-200">
-                      Manufacturer Batch / Lot # <span className="text-rose-500">*</span>
-                    </label>
-                    <span className="text-[10px] text-rose-500 font-semibold">Recall Traceability</span>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    value={intakeForm.batchNumber}
-                    onChange={e => setIntakeForm({ ...intakeForm, batchNumber: e.target.value })}
-                    placeholder="e.g. AMX-2026-01A, PARA-2026-B1..."
-                    className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-mono font-bold focus:ring-2 focus:ring-brand-500"
-                  />
-                  <FieldGuideNotice label="Read batch traceability & examples" title="Recall Traceability Key">
-                    <p>Enter exact manufacturer lot stamped on packaging (e.g. <code className="font-mono">AMX-2026-01A</code>) for recall safety.</p>
-                  </FieldGuideNotice>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-800 dark:text-slate-200">
-                      Adjustment Operation Type <span className="text-rose-500">*</span>
-                    </label>
-                    <span className="text-[10px] text-slate-400">Ledger Classification</span>
-                  </div>
-                  <select
-                    value={intakeForm.adjustmentType}
-                    onChange={e => setIntakeForm({ ...intakeForm, adjustmentType: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-semibold focus:ring-2 focus:ring-brand-500"
-                  >
-                    <option value="INITIAL_ONBOARDING">Initial Opening Stock Onboarding (+)</option>
-                    <option value="AUDIT_SURPLUS">Physical Cycle Count Surplus (+)</option>
-                    <option value="DONATION_INTAKE">Emergency Supply / Donation Intake (+)</option>
-                    <option value="DAMAGE_WRITE_OFF">Breakage & Damage Write-Off (-)</option>
-                  </select>
-                  <FieldGuideNotice label="Read operation types" title="Ledger Classification">
-                    <p>Categorizes the transaction in the immutable movement ledger for internal and regulatory audits.</p>
-                  </FieldGuideNotice>
                 </div>
               </div>
+              <button 
+                type="button" 
+                onClick={() => setShowIntakeModal(false)}
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition text-slate-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-              {/* Field 4 & 5: Quantity & Shelf Location */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-800 dark:text-slate-200">
-                      Quantity (Base Dispensing Units) <span className="text-rose-500">*</span>
-                    </label>
-                    <span className="text-[10px] text-slate-400">Atomic Unit Count</span>
-                  </div>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={intakeForm.qty}
-                    onChange={e => setIntakeForm({ ...intakeForm, qty: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-bold font-mono focus:ring-2 focus:ring-brand-500"
-                  />
-                  <FieldGuideNotice label="Read quantity rules & examples" title="Atomic Units Count">
-                    <p>Always enter in atomic base units (e.g. <code>200</code> for 2 boxes of 100 tablets).</p>
-                  </FieldGuideNotice>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-800 dark:text-slate-200">
-                      Storage Bin / Shelf Location
-                    </label>
-                    <span className="text-[10px] text-slate-400">Physical Dispensary Location</span>
-                  </div>
-                  <input
-                    type="text"
-                    value={intakeForm.storageLocation}
-                    onChange={e => setIntakeForm({ ...intakeForm, storageLocation: e.target.value })}
-                    placeholder="e.g. Aisle 2 - Shelf B3, Cold Vault 01..."
-                    className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-brand-500"
-                  />
-                  <FieldGuideNotice label="Read bin location tips" title="Dispensary Shelf Bin">
-                    <p>Assists dispensary staff in rapid medicine retrieval (e.g. <code>Shelf A-01</code>).</p>
-                  </FieldGuideNotice>
-                </div>
-              </div>
-
-              {/* Field 6: Manufacturing & Expiry Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-800 dark:text-slate-200">
-                      Manufacturing Date
-                    </label>
-                    <span className="text-[10px] text-slate-400">Factory Production Date</span>
-                  </div>
-                  <input
-                    type="date"
-                    value={intakeForm.mfgDate}
-                    onChange={e => setIntakeForm({ ...intakeForm, mfgDate: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-brand-500"
-                  />
-                  <FieldGuideNotice label="Read mfg date guide" title="Factory Synthesis Date">
-                    <p>Date of manufacture printed on packaging (e.g. <code>2026-03-01</code>).</p>
-                  </FieldGuideNotice>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-800 dark:text-slate-200">
-                      Expiry Date <span className="text-rose-500">*</span>
-                    </label>
-                    <span className="text-[10px] text-brand-600 font-semibold">FEFO Queue Priority</span>
-                  </div>
-                  <input
-                    type="date"
-                    required
-                    value={intakeForm.expDate}
-                    onChange={e => setIntakeForm({ ...intakeForm, expDate: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-bold text-brand-600 focus:ring-2 focus:ring-brand-500"
-                  />
-                  <FieldGuideNotice label="Read FEFO queue priority" title="First-Expired, First-Out Queue">
-                    <p>Enables the automated FEFO algorithm to dispense older viable batches first at POS (e.g. <code>2028-06-30</code>).</p>
-                  </FieldGuideNotice>
-                </div>
-              </div>
-
-              {/* Field 7: Unit Cost & Selling Price */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-800 dark:text-slate-200">
-                      Unit Cost Price ({currentCurrency.symbol}) <span className="text-rose-500">*</span>
-                    </label>
-                    <span className="text-[10px] text-slate-400">Valuation Cost</span>
-                  </div>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={intakeForm.unitCost}
-                    onChange={e => setIntakeForm({ ...intakeForm, unitCost: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-mono font-bold focus:ring-2 focus:ring-brand-500"
-                  />
-                  <FieldGuideNotice label="Read valuation cost note" title="Base Unit Cost">
-                    <p>Acquisition or valuation cost per atomic base unit (e.g. <code>GH₵18.00</code>).</p>
-                  </FieldGuideNotice>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-800 dark:text-slate-200">
-                      Unit Selling Price ({currentCurrency.symbol}) <span className="text-rose-500">*</span>
-                    </label>
-                    <span className="text-[10px] text-brand-600 font-semibold">POS Retail Price</span>
-                  </div>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={intakeForm.sellingPrice}
-                    onChange={e => setIntakeForm({ ...intakeForm, sellingPrice: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-mono font-bold text-brand-600 focus:ring-2 focus:ring-brand-500"
-                  />
-                  <FieldGuideNotice label="Read retail price note" title="Dispensary Shelf Price">
-                    <p>Standard patient price charged at POS cashier counter (e.g. <code>GH₵30.00</code>).</p>
-                  </FieldGuideNotice>
-                </div>
-              </div>
-
-              {/* Field 8: Authorizing Reason & Audit Notes */}
+            {/* Simplified Global Intake Settings (Top Bar) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0 text-xs">
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-semibold text-slate-800 dark:text-slate-200">
-                    Authorizing Reason & Audit Reference <span className="text-rose-500">*</span>
-                  </label>
-                  <span className="text-[10px] text-slate-400">Audit Trail Justification</span>
-                </div>
-                <textarea
-                  rows={2}
-                  required
-                  value={intakeForm.reason}
-                  onChange={e => setIntakeForm({ ...intakeForm, reason: e.target.value })}
-                  placeholder="Explain why this manual stock intake or adjustment is being recorded..."
-                  className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-brand-500"
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Adjustment Operation Type <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={intakeMeta.adjustmentType}
+                  onChange={e => setIntakeMeta({ ...intakeMeta, adjustmentType: e.target.value })}
+                  className="w-full px-2.5 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="INITIAL_ONBOARDING">Initial Opening Stock Onboarding (+)</option>
+                  <option value="AUDIT_SURPLUS">Physical Cycle Count Surplus (+)</option>
+                  <option value="DONATION_INTAKE">Emergency Supply / Donation Intake (+)</option>
+                  <option value="DAMAGE_WRITE_OFF">Breakage & Damage Write-Off (-)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Default Shelf / Storage Location
+                </label>
+                <input
+                  type="text"
+                  value={intakeMeta.defaultLocation}
+                  onChange={e => setIntakeMeta({ ...intakeMeta, defaultLocation: e.target.value })}
+                  placeholder="e.g. Dispensary Shelf A-01, Vault..."
+                  className="w-full px-2.5 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-medium text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500"
                 />
-                <FieldGuideNotice label="Read audit justification tips & examples" title="Audit Trail Justification">
-                  <div className="space-y-1">
-                    <p><strong>Example 1:</strong> <em>"Initial opening stock onboarding count reconciliation from legacy system."</em></p>
-                    <p><strong>Example 2:</strong> <em>"Monthly cycle count surplus discovered during aisle audit."</em></p>
-                  </div>
-                </FieldGuideNotice>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Authorizing Reason & Audit Reference <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={intakeMeta.reason}
+                  onChange={e => setIntakeMeta({ ...intakeMeta, reason: e.target.value })}
+                  placeholder="e.g. Opening balance onboarding count reconciliation..."
+                  className="w-full px-2.5 py-1.5 border rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500"
+                />
               </div>
             </div>
 
-            <div className="flex justify-end space-x-2 pt-3 border-t">
-              <button
-                type="button"
-                onClick={() => setShowIntakeModal(false)}
-                className="px-4 py-2 border rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold shadow transition"
-              >
-                Post Stock Record & Movement
-              </button>
+            {/* Landscape Multi-Product Table */}
+            <div className="flex-1 overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 rounded-xl">
+              <div className="flex items-center justify-between px-3 py-2 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shrink-0">
+                <span className="font-bold text-xs text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+                  <Boxes className="w-3.5 h-3.5 text-brand-600" />
+                  <span>Product Lines to Receive / Adjust ({intakeRows.length})</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAddIntakeRow}
+                  className="px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1 shadow transition"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Product Line</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto overflow-y-auto flex-1">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px] sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="p-2.5 w-10 text-center">#</th>
+                      <th className="p-2.5 min-w-[210px]">Medicine Name *</th>
+                      <th className="p-2.5 min-w-[130px]">Batch / Lot # *</th>
+                      <th className="p-2.5 min-w-[140px]">Unit Type</th>
+                      <th className="p-2.5 min-w-[120px]">Mfg Date</th>
+                      <th className="p-2.5 min-w-[120px]">Expiry Date *</th>
+                      <th className="p-2.5 min-w-[130px]">Stock Qty *</th>
+                      <th className="p-2.5 min-w-[130px]">Buy Price ({currentCurrency.symbol}) *</th>
+                      <th className="p-2.5 min-w-[130px]">Sell Price ({currentCurrency.symbol}) *</th>
+                      <th className="p-2.5 min-w-[150px]">Profit Margin</th>
+                      <th className="p-2.5 min-w-[100px]">Total Value</th>
+                      <th className="p-2.5 w-10 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {intakeRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={12} className="p-8 text-center text-slate-400 dark:text-slate-500">
+                          <p className="font-semibold mb-2">No product lines in intake list.</p>
+                          <button
+                            type="button"
+                            onClick={handleAddIntakeRow}
+                            className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs font-bold shadow"
+                          >
+                            + Add First Product
+                          </button>
+                        </td>
+                      </tr>
+                    ) : (
+                      intakeRows.map((row, index) => {
+                        const prod = products.find(p => p.id === row.productId);
+                        const packTier = prod?.packagingTiers?.find(t => t.tierType === 'PACK');
+                        const packMultiplier = packTier?.multiplier || 10;
+                        const hasPack = !!packTier;
+                        const isPackMode = row.intakeUnitType === 'PACK';
+
+                        const lineCost = (row.qty || 0) * (row.unitCost || 0);
+                        const margin = (row.sellingPrice || 0) - (row.unitCost || 0);
+                        const marginPercent = (row.sellingPrice || 0) > 0 ? ((margin / row.sellingPrice) * 100) : 0;
+                        const markupPercent = (row.unitCost || 0) > 0 ? ((margin / row.unitCost) * 100) : 0;
+                        const isHealthy = margin > 0 && marginPercent >= 20;
+                        const isWarning = margin > 0 && marginPercent < 20;
+                        const isLoss = margin <= 0;
+
+                        return (
+                          <tr key={row.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition">
+                            <td className="p-2 text-center font-mono font-bold text-slate-400">
+                              {index + 1}
+                            </td>
+                            {/* Medicine Formulation */}
+                            <td className="p-2">
+                              <select
+                                required
+                                value={row.productId}
+                                onChange={e => handleUpdateIntakeRow(row.id, 'productId', e.target.value)}
+                                className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-semibold text-xs focus:ring-1 focus:ring-brand-500"
+                              >
+                                {products.map(p => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.brandName} ({p.genericName}) [Stock: {p.availableQuantity}]
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+
+                            {/* Batch / Lot */}
+                            <td className="p-2">
+                              <div className="relative flex items-center">
+                                <input
+                                  type="text"
+                                  required
+                                  value={row.batchNumber}
+                                  onChange={e => handleUpdateIntakeRow(row.id, 'batchNumber', e.target.value)}
+                                  placeholder="Auto lot #"
+                                  className="w-full pl-2 pr-7 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-xs focus:ring-1 focus:ring-brand-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const p = products.find(prod => prod.id === row.productId);
+                                    handleUpdateIntakeRow(row.id, 'batchNumber', generateAutoBatchNumber(p?.brandName));
+                                  }}
+                                  className="absolute right-1 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 p-1 rounded"
+                                  title="Re-generate auto Batch / Lot #"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold block mt-0.5">
+                                ✓ Auto-Generated
+                              </span>
+                            </td>
+
+                            {/* Intake Unit Mode Selector */}
+                            <td className="p-2">
+                              {hasPack ? (
+                                <div className="inline-flex p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateIntakeRow(row.id, 'intakeUnitType', 'PACK')}
+                                    className={`px-2 py-1 rounded text-[10px] font-bold transition flex items-center space-x-1 ${
+                                      isPackMode
+                                        ? 'bg-brand-600 text-white shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                    }`}
+                                    title={`1 Pack = ${packMultiplier} ${prod?.baseUnit || 'units'}`}
+                                  >
+                                    <span>📦 Pack ({packMultiplier})</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateIntakeRow(row.id, 'intakeUnitType', 'BASE')}
+                                    className={`px-2 py-1 rounded text-[10px] font-bold transition flex items-center space-x-1 ${
+                                      !isPackMode
+                                        ? 'bg-brand-600 text-white shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                    }`}
+                                    title={`Loose ${prod?.baseUnit || 'units'}`}
+                                  >
+                                    <span>💊 {prod?.baseUnit || 'Loose'}</span>
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-semibold border border-slate-200 dark:border-slate-700">
+                                  💊 {prod?.baseUnit || 'Loose Unit'}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Mfg Date with Calendar Picker */}
+                            <td className="p-2">
+                              <input
+                                type="date"
+                                value={row.mfgDate}
+                                onChange={e => handleUpdateIntakeRow(row.id, 'mfgDate', e.target.value)}
+                                className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 text-xs focus:ring-1 focus:ring-brand-500"
+                              />
+                            </td>
+
+                            {/* Expiry Date with Calendar Picker */}
+                            <td className="p-2">
+                              <input
+                                type="date"
+                                required
+                                value={row.expDate}
+                                onChange={e => handleUpdateIntakeRow(row.id, 'expDate', e.target.value)}
+                                className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold text-brand-600 dark:text-brand-400 text-xs focus:ring-1 focus:ring-brand-500"
+                              />
+                            </td>
+
+                            {/* Quantity */}
+                            <td className="p-2">
+                              {isPackMode ? (
+                                <div>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    required
+                                    value={row.packQty}
+                                    onChange={e => handleUpdateIntakeRow(row.id, 'packQty', e.target.value)}
+                                    className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold font-mono text-center text-xs focus:ring-1 focus:ring-brand-500"
+                                    placeholder="Boxes"
+                                  />
+                                  <span className="text-[10px] text-brand-600 dark:text-brand-400 font-bold block mt-0.5 text-center truncate">
+                                    = {row.qty.toLocaleString()} {prod?.baseUnit || 'tabs'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    required
+                                    value={row.qty}
+                                    onChange={e => handleUpdateIntakeRow(row.id, 'qty', parseInt(e.target.value) || 0)}
+                                    className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold font-mono text-center text-xs focus:ring-1 focus:ring-brand-500"
+                                    placeholder="Loose units"
+                                  />
+                                  <span className="text-[10px] text-slate-400 block mt-0.5 text-center">
+                                    {prod?.baseUnit || 'units'}
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Cost Price */}
+                            <td className="p-2">
+                              {isPackMode ? (
+                                <div className="space-y-0.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                    value={row.packCost}
+                                    onChange={e => handleUpdateIntakeRow(row.id, 'packCost', e.target.value)}
+                                    className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold font-mono text-xs focus:ring-1 focus:ring-brand-500"
+                                    placeholder="Cost / Pack"
+                                  />
+                                  <span className="text-[10px] text-slate-400 block truncate">
+                                    {formatCurrency(row.unitCost)} / {prod?.baseUnit || 'tab'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="space-y-0.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                    value={row.unitCost}
+                                    onChange={e => handleUpdateIntakeRow(row.id, 'unitCost', parseFloat(e.target.value) || 0)}
+                                    className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold font-mono text-xs focus:ring-1 focus:ring-brand-500"
+                                    placeholder="Cost / Unit"
+                                  />
+                                  <span className="text-[10px] text-slate-400 block truncate">
+                                    Per {prod?.baseUnit || 'unit'}
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Selling Price */}
+                            <td className="p-2">
+                              {isPackMode ? (
+                                <div className="space-y-0.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                    value={row.packSellingPrice}
+                                    onChange={e => handleUpdateIntakeRow(row.id, 'packSellingPrice', e.target.value)}
+                                    className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold font-mono text-xs text-brand-600 dark:text-brand-400 focus:ring-1 focus:ring-brand-500"
+                                    placeholder="Sell / Pack"
+                                  />
+                                  <span className="text-[10px] text-brand-600/80 font-medium block truncate">
+                                    {formatCurrency(row.sellingPrice)} / {prod?.baseUnit || 'tab'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="space-y-0.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                    value={row.sellingPrice}
+                                    onChange={e => handleUpdateIntakeRow(row.id, 'sellingPrice', parseFloat(e.target.value) || 0)}
+                                    className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold font-mono text-xs text-brand-600 dark:text-brand-400 focus:ring-1 focus:ring-brand-500"
+                                    placeholder="Sell / Unit"
+                                  />
+                                  <span className="text-[10px] text-brand-600/80 font-medium block truncate">
+                                    Per {prod?.baseUnit || 'unit'}
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Live Margin Calculation */}
+                            <td className="p-2">
+                              <div className="flex flex-col space-y-0.5">
+                                <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+                                  isHealthy 
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800' 
+                                    : isWarning 
+                                    ? 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+                                    : 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                                }`}>
+                                  {margin >= 0 ? `+${formatCurrency(margin)}` : formatCurrency(margin)} ({marginPercent.toFixed(1)}%)
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  Markup: {markupPercent.toFixed(1)}%
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Total Line Valuation */}
+                            <td className="p-2 font-mono font-bold text-slate-900 dark:text-white">
+                              {formatCurrency(lineCost)}
+                            </td>
+
+                            {/* Action Remove */}
+                            <td className="p-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveIntakeRow(row.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition"
+                                title="Remove this product line"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Bottom Valuation & Margin Summary Banner */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0 text-xs">
+              <div>
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Total Lines</span>
+                <span className="text-base font-extrabold text-slate-900 dark:text-white">{intakeRows.length} items</span>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Total Units</span>
+                <span className="text-base font-extrabold text-slate-900 dark:text-white">
+                  {intakeRows.reduce((sum, r) => sum + (r.qty || 0), 0)} units
+                </span>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Valuation Cost</span>
+                <span className="text-base font-extrabold text-slate-900 dark:text-white font-mono">
+                  {formatCurrency(intakeRows.reduce((sum, r) => sum + ((r.qty || 0) * (r.unitCost || 0)), 0))}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wider block">Projected Retail Value</span>
+                <span className="text-base font-extrabold text-brand-600 dark:text-brand-400 font-mono">
+                  {formatCurrency(intakeRows.reduce((sum, r) => sum + ((r.qty || 0) * (r.sellingPrice || 0)), 0))}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Projected Profit</span>
+                {(() => {
+                  const totalCost = intakeRows.reduce((sum, r) => sum + ((r.qty || 0) * (r.unitCost || 0)), 0);
+                  const totalRetail = intakeRows.reduce((sum, r) => sum + ((r.qty || 0) * (r.sellingPrice || 0)), 0);
+                  const totalProfit = totalRetail - totalCost;
+                  const avgMargin = totalRetail > 0 ? (totalProfit / totalRetail) * 100 : 0;
+                  return (
+                    <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
+                      +{formatCurrency(totalProfit)} ({avgMargin.toFixed(1)}%)
+                    </span>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t shrink-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddIntakeRow}
+                  className="px-3.5 py-2 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition"
+                >
+                  <Plus className="w-4 h-4 text-brand-600" />
+                  <span>Add Another Product</span>
+                </button>
+
+                <label className="flex items-center space-x-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer bg-slate-100 dark:bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 select-none hover:bg-slate-200/70 dark:hover:bg-slate-750 transition" title="When checked, retail selling prices and pack definitions in the catalogue will be updated to reflect this shipment. When unchecked, only the received batch ledger and actual cost are recorded without altering master shelf prices.">
+                  <input
+                    type="checkbox"
+                    checked={updateMasterSellingPrice}
+                    onChange={e => setUpdateMasterSellingPrice(e.target.checked)}
+                    className="rounded text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                  />
+                  <span>Update Master Catalogue Shelf Prices & Tiers</span>
+                </label>
+              </div>
+
+              <div className="flex items-center space-x-2 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setShowIntakeModal(false)}
+                  className="px-4 py-2 border rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 flex items-center space-x-1.5 transition"
+                >
+                  <PackageCheck className="w-4 h-4" />
+                  <span>Post Multi-Product Stock Intake ({intakeRows.length} Items)</span>
+                </button>
+              </div>
             </div>
           </form>
         </div>

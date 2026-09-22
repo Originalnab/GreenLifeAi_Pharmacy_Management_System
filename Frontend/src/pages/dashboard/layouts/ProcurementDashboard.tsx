@@ -41,22 +41,22 @@ export const ProcurementDashboard: React.FC<ProcurementDashboardProps> = ({ onNa
             </button>
           </div>
         </div>
-        <DashboardFilterBar period={period} onChange={setPeriod} className="opacity-80" />
+        <DashboardFilterBar period={period} onChange={setPeriod} className="mt-1" />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard title="Open Requests" value={`${openRequests} Drafts`} subValue="Purchase requests"
-          icon={<FileText className="w-4 h-4" />} iconBg="bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-400"
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard title="Open Requests" value={`${openRequests} Drafts`} subValue="Purchase requests in draft"
+          icon={<FileText className="w-5 h-5" />} iconBg="bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-400"
           trend="neutral" trendLabel="Pending submission" accentColor="hover:border-cyan-500/50" onClick={() => onNavigate('purchasing')} />
-        <KpiCard title="Active Orders" value={`${activeOrders} POs`} subValue="Submitted or approved"
-          icon={<ShoppingCart className="w-4 h-4" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
-          trend="neutral" trendLabel="In pipeline" accentColor="hover:border-blue-500/50" onClick={() => onNavigate('purchasing')} />
-        <KpiCard title="Awaiting Delivery" value={`${awaiting} POs`} subValue="Approved, pending receipt"
-          icon={<Truck className="w-4 h-4" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
-          trend={awaiting > 2 ? 'down' : 'neutral'} trendLabel="Follow up" accentColor="hover:border-purple-500/50" />
-        <KpiCard title="Reorder Alerts" value={`${reorderAlerts} Products`} subValue="Below reorder level"
-          icon={<AlertTriangle className="w-4 h-4" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
-          trend={reorderAlerts > 3 ? 'down' : 'neutral'} trendLabel="Action needed" accentColor="hover:border-amber-500/50" onClick={() => onNavigate('inventory')} />
+        <KpiCard title="Active Orders" value={`${activeOrders} POs`} subValue="Submitted & approved orders"
+          icon={<ShoppingCart className="w-5 h-5" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
+          trend="neutral" trendLabel="In active pipeline" accentColor="hover:border-blue-500/50" onClick={() => onNavigate('purchasing')} />
+        <KpiCard title="Awaiting Delivery" value={`${awaiting} POs`} subValue="Approved, pending dock receipt"
+          icon={<Truck className="w-5 h-5" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
+          trend={awaiting > 2 ? 'down' : 'neutral'} trendLabel="Follow up needed" accentColor="hover:border-purple-500/50" />
+        <KpiCard title="Reorder Alerts" value={`${reorderAlerts} Products`} subValue="Stock below minimum threshold"
+          icon={<AlertTriangle className="w-5 h-5" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
+          trend={reorderAlerts > 3 ? 'down' : 'neutral'} trendLabel="Order recommended" accentColor="hover:border-amber-500/50" onClick={() => onNavigate('inventory')} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

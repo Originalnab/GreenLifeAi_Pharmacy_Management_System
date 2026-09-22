@@ -24,11 +24,11 @@ export const FinancialSummaryWidget: React.FC<FinancialSummaryWidgetProps> = ({
   const gpMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
 
   const rows = [
-    { label: 'Total Revenue',    value: revenue,     bar: 100,                          color: 'bg-brand-500' },
-    { label: 'Cost of Goods Sold', value: -cogs,    bar: (cogs / revenue) * 100,       color: 'bg-amber-400' },
-    { label: 'Gross Profit',     value: grossProfit, bar: gpMargin,                     color: 'bg-emerald-500' },
-    { label: 'Operating Expenses',value: -expenses,  bar: (expenses / revenue) * 100,  color: 'bg-rose-400' },
-    { label: 'Net Estimate',     value: netEstimate, bar: (netEstimate / revenue) * 100, color: netEstimate >= 0 ? 'bg-blue-500' : 'bg-red-500' },
+    { label: 'Total Revenue',    value: revenue,     bar: revenue > 0 ? 100 : 0,                             color: 'bg-brand-500' },
+    { label: 'Cost of Goods Sold', value: -cogs,    bar: revenue > 0 ? (cogs / revenue) * 100 : 0,          color: 'bg-amber-400' },
+    { label: 'Gross Profit',     value: grossProfit, bar: gpMargin,                                         color: 'bg-emerald-500' },
+    { label: 'Operating Expenses',value: -expenses,  bar: revenue > 0 ? (expenses / revenue) * 100 : 0,      color: 'bg-rose-400' },
+    { label: 'Net Estimate',     value: netEstimate, bar: revenue > 0 ? (netEstimate / revenue) * 100 : 0,   color: netEstimate >= 0 ? 'bg-blue-500' : 'bg-red-500' },
   ];
 
   return (

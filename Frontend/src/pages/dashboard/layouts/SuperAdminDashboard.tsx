@@ -8,6 +8,7 @@ import { usePharmacy } from '../../../context/PharmacyContext';
 import { DashboardFilterBar, FilterPeriod, PERIOD_META } from '../widgets/DashboardFilterBar';
 import { KpiCard } from '../widgets/KpiCard';
 import { SalesBarChart } from '../widgets/SalesBarChart';
+import { RevenueExpenseLineChart } from '../widgets/RevenueExpenseLineChart';
 import { DonutChart } from '../widgets/DonutChart';
 import { ApprovalQueueWidget } from '../widgets/ApprovalQueueWidget';
 import { ExpiryRiskWidget } from '../widgets/ExpiryRiskWidget';
@@ -17,6 +18,8 @@ import { PurchasePipelineWidget } from '../widgets/PurchasePipelineWidget';
 import { StockOverviewWidget } from '../widgets/StockOverviewWidget';
 import { SystemHealthWidget } from '../widgets/SystemHealthWidget';
 
+import { isDemoUser } from '../../../types';
+
 interface SuperAdminDashboardProps { onNavigate: (tab: string) => void }
 
 export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onNavigate }) => {
@@ -24,13 +27,14 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onNavi
   const {
     sales, products, batches, activeShift, approvals, customers,
     suppliers, purchaseOrders, expenses, loans, users, auditLogs,
-    approveRequest, rejectRequest, currentUser, formatCurrency,
+    approveRequest, rejectRequest, currentUser, formatCurrency, operatingMode,
   } = usePharmacy();
 
   const m = PERIOD_META[period].multiplier;
-  const todayRevenue  = sales.reduce((a, s) => a + s.total, 0);
+  const isDemo = operatingMode === 'DEMO';
+  const todayRevenue  = sales.reduce((a, s) => a + (s.total || 0), 0);
   const revenue       = todayRevenue * m;
-  const cogsBase      = todayRevenue * 0.6;
+  const cogsBase      = sales.reduce((a, s) => a + (s.total ? s.total * 0.65 : 0), 0);
   const expBase       = expenses.reduce((a, e) => a + e.amount, 0);
   const grossProfit   = revenue - cogsBase * m;
   const txCount       = Math.round(sales.length * m);
@@ -43,7 +47,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onNavi
     const d = (new Date(b.expiryDate).getTime() - new Date('2026-09-20').getTime()) / 86400000;
     return d <= 60 && d > 0;
   }).length;
-  const activeUsers   = users.filter(u => u.active).length;
+  
+  const staffAccounts = users.filter(u => isDemo || !isDemoUser(u));
+  const activeUsers   = staffAccounts.filter(u => u.active).length;
   const failedLogins  = 3; // mock
   const pendingApprovals = approvals.filter(a => a.status === 'PENDING');
   const sparkRevenue  = [420000, 580000, 710000, 490000, 890000, 760000, todayRevenue].map(v => v * m / 7);
@@ -69,77 +75,68 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onNavi
               <span className="text-xs text-slate-400">Backup: 2h ago · All systems nominal</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight mt-1.5">Welcome, {currentUser.name}</h1>
-            <p className="text-xs text-slate-400 mt-1">Full system + operational + financial visibility · Installation v1.0.0</p>
+            <p className="text-xs text-slate-300 mt-1">Super Administrator · Greenlife Central Branch (Victoria Island)</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => onNavigate('administration')} className="flex items-center gap-2 bg-white text-slate-800 hover:bg-slate-50 px-4 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95">
-              <Users className="w-4 h-4" />Manage Users
+            <DashboardFilterBar period={period} onChange={setPeriod} />
+            <button onClick={() => onNavigate('administration')} className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-semibold backdrop-blur-sm transition border border-white/10">
+              <Users className="w-3.5 h-3.5" />Manage Users
             </button>
-            <button onClick={() => onNavigate('audit')} className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-2.5 rounded-xl font-semibold text-xs border border-slate-600 transition">
-              <Activity className="w-4 h-4" />Audit Log
-            </button>
-            <button onClick={() => onNavigate('settings')} className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-2.5 rounded-xl font-semibold text-xs border border-slate-600 transition">
-              <Settings className="w-4 h-4" />System Settings
+            <button onClick={() => onNavigate('settings')} className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-semibold backdrop-blur-sm transition border border-white/10">
+              <Settings className="w-3.5 h-3.5" />Settings
             </button>
           </div>
         </div>
-        <DashboardFilterBar period={period} onChange={setPeriod} className="opacity-80" />
       </div>
 
-      {/* System Vitals Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard title="System Status" value="Operational" subValue="All services healthy"
-          icon={<Database className="w-4 h-4" />} iconBg="bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
-          trend="up" trendLabel="100% uptime" badge="LIVE" badgeColor="bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300"
-          accentColor="hover:border-emerald-500/50" />
-        <KpiCard title="Last Backup" value="2h ago" subValue="Sept 20, 22:15"
-          icon={<Shield className="w-4 h-4" />} iconBg="bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
-          trend="neutral" trendLabel="Safe & verified" badge="✓ Safe" badgeColor="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
-          accentColor="hover:border-blue-500/50" onClick={() => onNavigate('settings')} />
-        <KpiCard title="Active Users" value={`${activeUsers} Staff`} subValue={`${users.length} total accounts`}
-          icon={<Users className="w-4 h-4" />} iconBg="bg-purple-100 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
-          trend="neutral" trendLabel="All roles assigned" accentColor="hover:border-purple-500/50" onClick={() => onNavigate('administration')} />
-        <KpiCard title="Security Events" value={`${failedLogins} Failed Logins`} subValue="Last 24 hours"
-          icon={<Activity className="w-4 h-4" />} iconBg={failedLogins >= 5 ? "bg-rose-100 dark:bg-rose-950/50 text-rose-600" : "bg-slate-100 dark:bg-slate-800 text-slate-500"}
-          trend={failedLogins >= 5 ? 'down' : 'neutral'} trendLabel={failedLogins >= 5 ? 'Review now' : 'No anomalies'}
-          accentColor="hover:border-rose-500/50" onClick={() => onNavigate('audit')} />
-      </div>
-
-      {/* Operational KPIs */}
+      {/* System Vitals Ribbon (4 cards) */}
       <div>
-        <h2 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Operational Overview</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-          <KpiCard title="Revenue" value={formatCurrency(revenue)} subValue={`${txCount} transactions`}
-            icon={<TrendingUp className="w-4 h-4" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
-            trend="up" trendLabel={`GP: ${formatCurrency(grossProfit)}`} accentColor="hover:border-emerald-500/50"
-            sparkData={sparkRevenue} onClick={() => onNavigate('sales')} />
-          <KpiCard title="Transactions" value={txCount.toLocaleString()} subValue="Completed sales"
-            icon={<FileText className="w-4 h-4" />} iconBg="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400"
-            trend="up" trendLabel="vs prior period" accentColor="hover:border-blue-500/50" />
-          <KpiCard title="Low / Out of Stock" value={`${lowStockCount} Products`}
-            icon={<Package className="w-4 h-4" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
-            trend={lowStockCount > 5 ? 'down' : 'neutral'} trendLabel="Reorder needed" accentColor="hover:border-amber-500/50" onClick={() => onNavigate('inventory')} />
-          <KpiCard title="Expiring Batches" value={`${expCount}`} subValue="Within 60 days"
-            icon={<Clock className="w-4 h-4" />} iconBg="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
-            trend={expCount > 3 ? 'down' : 'neutral'} trendLabel="At risk" accentColor="hover:border-rose-500/50" onClick={() => onNavigate('inventory')} />
-          <KpiCard title="Customer AR" value={formatCurrency(totalAR)}
-            icon={<CreditCard className="w-4 h-4" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
-            trend="neutral" trendLabel="Outstanding" accentColor="hover:border-purple-500/50" onClick={() => onNavigate('parties')} />
-          <KpiCard title="Expenses" value={formatCurrency(totalExpenses)}
-            icon={<Banknote className="w-4 h-4" />} iconBg="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-            trend="neutral" trendLabel="This period" accentColor="hover:border-slate-400/50" onClick={() => onNavigate('finance')} />
+        <h2 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">System Vitals & Risk Control</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard title="Active Staff Users" value={`${activeUsers} Active`} subValue={`${staffAccounts.length} total registered accounts`}
+            icon={<Users className="w-5 h-5" />} iconBg="bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400"
+            trend="neutral" trendLabel="Security profiles current" accentColor="hover:border-indigo-500/50" onClick={() => onNavigate('administration')} />
+          <KpiCard title="Pending Approvals" value={`${pendingApprovals.length} Pending`} subValue="Manager overrides queued"
+            icon={<Clock className="w-5 h-5" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
+            trend={pendingApprovals.length > 2 ? 'down' : 'neutral'} trendLabel={pendingApprovals.length > 0 ? 'Requires sign-off' : 'Queue clear'} accentColor="hover:border-amber-500/50" />
+          <KpiCard title="Low Stock Items" value={`${lowStockCount} Products`} subValue="Items below threshold"
+            icon={<AlertTriangle className="w-5 h-5" />} iconBg="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
+            trend={lowStockCount > 3 ? 'down' : 'neutral'} trendLabel="Reorder queue active" accentColor="hover:border-rose-500/50" onClick={() => onNavigate('purchasing')} />
+          <KpiCard title="Near Expiry Batches" value={`${expCount} Batches`} subValue="Expiring in ≤ 60 days"
+            icon={<Package className="w-5 h-5" />} iconBg="bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400"
+            trend={expCount > 0 ? 'down' : 'up'} trendLabel="FEFO risk active" accentColor="hover:border-amber-500/50" onClick={() => onNavigate('inventory')} />
         </div>
       </div>
 
-      {/* Revenue Chart */}
-      <SalesBarChart period={period} baseRevenue={todayRevenue} baseCogs={cogsBase} baseExpenses={expBase} formatCurrency={formatCurrency} />
+      {/* Business KPIs Ribbon (4 cards) */}
+      <div>
+        <h2 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Enterprise Financials ({PERIOD_META[period].label})</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard title="Gross Sales Revenue" value={formatCurrency(revenue)} subValue={`${txCount} orders recorded`}
+            icon={<TrendingUp className="w-5 h-5" />} iconBg="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
+            trend="up" trendLabel="+12.4% vs prev period" sparkData={sparkRevenue} accentColor="hover:border-emerald-500/50" onClick={() => onNavigate('sales')} />
+          <KpiCard title="Gross Profit (Est.)" value={formatCurrency(grossProfit)} subValue={`Margin: ${revenue > 0 ? ((grossProfit / revenue) * 100).toFixed(1) : 0}%`}
+            icon={<Banknote className="w-5 h-5" />} iconBg="bg-brand-50 dark:bg-brand-950/50 text-brand-600 dark:text-brand-400"
+            trend="up" trendLabel="Healthy margin" accentColor="hover:border-brand-500/50" onClick={() => onNavigate('finance')} />
+          <KpiCard title="Supplier Payables (AP)" value={formatCurrency(totalAP)} subValue={`${suppliers.length} active suppliers`}
+            icon={<Package className="w-5 h-5" />} iconBg="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
+            trend="neutral" trendLabel="Scheduled dispatches" accentColor="hover:border-rose-500/50" onClick={() => onNavigate('parties')} />
+          <KpiCard title="Customer Receivables" value={formatCurrency(totalAR)} subValue={`Expenses: ${formatCurrency(totalExpenses)}`}
+            icon={<CreditCard className="w-5 h-5" />} iconBg="bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400"
+            trend="neutral" trendLabel="Outstanding balances" accentColor="hover:border-purple-500/50" onClick={() => onNavigate('parties')} />
+        </div>
+      </div>
 
-      {/* Main analytics grid */}
+      {/* Core Analytics: Multi-Series Bar Chart & Double Line Chart paired with Payment Mix & P&L */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <SalesBarChart period={period} baseRevenue={todayRevenue} baseCogs={cogsBase} baseExpenses={expBase} formatCurrency={formatCurrency} />
+          <RevenueExpenseLineChart period={period} baseRevenue={todayRevenue} baseExpenses={expBase} formatCurrency={formatCurrency} />
+        </div>
         <div className="lg:col-span-1 space-y-6">
           <DonutChart
-            title="Revenue by Payment Method"
-            subtitle="All payment channels"
+            title="Payment Method Breakdown"
+            subtitle="Channel distribution"
             segments={[
               { label: 'Cash',       value: Math.round(revenue * 0.58), color: '#22c55e' },
               { label: 'Mobile Money',value: Math.round(revenue * 0.24), color: '#3b82f6' },
@@ -147,24 +144,21 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onNavi
               { label: 'Credit',      value: Math.round(revenue * 0.06), color: '#f59e0b' },
             ]}
             formatValue={v => formatCurrency(v)}
-            centerLabel="Revenue"
+            centerLabel="Total"
             centerValue={formatCurrency(revenue)}
           />
-          <SystemHealthWidget activeUserCount={activeUsers} failedLoginCount={failedLogins} lastBackup="2h ago" onNavigate={onNavigate} />
-        </div>
-
-        <div className="lg:col-span-1 space-y-6">
-          <PurchasePipelineWidget purchaseOrders={purchaseOrders} onNavigate={onNavigate} formatCurrency={formatCurrency} />
-          <StockOverviewWidget products={products} onNavigate={onNavigate} formatCurrency={formatCurrency} />
-        </div>
-
-        <div className="lg:col-span-1 space-y-6">
-          <ApprovalQueueWidget approvals={approvals} onApprove={approveRequest} onReject={rejectRequest} formatCurrency={formatCurrency} />
           <FinancialSummaryWidget period={period} baseRevenue={todayRevenue} baseCogs={cogsBase} baseExpenses={expBase} totalAR={totalAR} totalAP={totalAP} totalLoans={totalLoans} formatCurrency={formatCurrency} />
         </div>
       </div>
 
-      {/* Financial Command Row */}
+      {/* Operational & Risk Command Center (3-card balanced triad) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <StockOverviewWidget products={products} onNavigate={onNavigate} formatCurrency={formatCurrency} />
+        <PurchasePipelineWidget purchaseOrders={purchaseOrders} onNavigate={onNavigate} formatCurrency={formatCurrency} />
+        <ApprovalQueueWidget approvals={approvals} onApprove={approveRequest} onReject={rejectRequest} formatCurrency={formatCurrency} />
+      </div>
+
+      {/* Financial Command KPIs */}
       <div>
         <h2 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Financial Command</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -183,10 +177,17 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onNavi
         </div>
       </div>
 
-      {/* Expiry + Recommendations */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ExpiryRiskWidget batches={batches} onNavigate={onNavigate} />
-        <RecommendationsPanel recommendations={recommendations} title="System Recommendations" />
+      {/* System Health + Expiry Risk & Recommendations */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
+          <SystemHealthWidget activeUserCount={activeUsers} failedLoginCount={failedLogins} lastBackup="2h ago" onNavigate={onNavigate} />
+        </div>
+        <div className="lg:col-span-1">
+          <ExpiryRiskWidget batches={batches} onNavigate={onNavigate} />
+        </div>
+        <div className="lg:col-span-1">
+          <RecommendationsPanel recommendations={recommendations} title="System Recommendations" />
+        </div>
       </div>
 
       {/* User & Audit Strip */}
@@ -198,7 +199,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onNavi
             <button onClick={() => onNavigate('administration')} className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold hover:underline">Manage →</button>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {users.slice(0, 6).map(u => (
+            {staffAccounts.slice(0, 6).map(u => (
               <div key={u.id} className="px-4 py-3 flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-400 to-clinical-500 flex items-center justify-center text-white text-xs font-extrabold flex-shrink-0">
                   {u.name.charAt(0)}

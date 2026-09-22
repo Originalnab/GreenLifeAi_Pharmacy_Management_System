@@ -6,6 +6,8 @@ import {
 import { usePharmacy } from '../../context/PharmacyContext';
 import { AuditEvent } from '../../types';
 import { FloatingBulkActionBar } from '../../components/common/FloatingBulkActionBar';
+import { Pagination } from '../../components/common/Pagination';
+import { usePagination } from '../../hooks/usePagination';
 
 export const AuditPage: React.FC = () => {
   const { auditLogs, currentUser } = usePharmacy();
@@ -32,6 +34,12 @@ export const AuditPage: React.FC = () => {
     const matchesOutcome = outcomeFilter === 'ALL' || log.outcome === outcomeFilter;
     return matchesSearch && matchesModule && matchesOutcome;
   });
+
+  const {
+    currentPage,
+    setCurrentPage,
+    paginatedItems: paginatedLogs
+  } = usePagination(filteredLogs, 10, [searchTerm, moduleFilter, outcomeFilter]);
 
   const isAllSelected = filteredLogs.length > 0 && filteredLogs.every(l => selectedAuditIds.includes(l.id));
   const isSomeSelected = filteredLogs.some(l => selectedAuditIds.includes(l.id)) && !isAllSelected;
@@ -191,7 +199,7 @@ export const AuditPage: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredLogs.map((log, index) => {
+                  paginatedLogs.map((log, index) => {
                     const isSelected = selectedAuditIds.includes(log.id);
                     return (
                       <tr 
@@ -212,7 +220,7 @@ export const AuditPage: React.FC = () => {
                               className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-700 cursor-pointer"
                             />
                             <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500 w-5 text-right">
-                              {index + 1}
+                              {(currentPage - 1) * 10 + index + 1}
                             </span>
                           </div>
                         </td>
@@ -247,6 +255,13 @@ export const AuditPage: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filteredLogs.length}
+            pageSize={10}
+            onPageChange={setCurrentPage}
+          />
 
           <FloatingBulkActionBar
             selectedCount={selectedAuditIds.length}

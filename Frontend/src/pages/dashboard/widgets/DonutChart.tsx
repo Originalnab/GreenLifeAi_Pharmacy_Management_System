@@ -20,17 +20,20 @@ export const DonutChart: React.FC<DonutChartProps> = ({
   title, subtitle, segments, centerLabel, centerValue, formatValue,
 }) => {
   const [hovered, setHovered] = useState<number | null>(null);
-  const total = segments.reduce((a, s) => a + s.value, 0) || 1;
+  const rawTotal = segments.reduce((a, s) => a + (Number(s.value) || 0), 0);
+  const total = rawTotal > 0 ? rawTotal : 1;
   const fmt = formatValue ?? ((v: number) => v.toString());
 
   // Build SVG arcs
   const cx = 60, cy = 60, r = 48, innerR = 30;
-  const circumference = 2 * Math.PI * r;
 
   let cumulativeAngle = -90;
   const arcs = segments.map((seg, i) => {
+    if (rawTotal === 0 || !seg.value || isNaN(seg.value)) {
+      return { ...seg, path: '', pct: 0, index: i };
+    }
     const pct = seg.value / total;
-    const angle = pct * 360;
+    const angle = Math.min(359.99, pct * 360);
     const start = cumulativeAngle;
     cumulativeAngle += angle;
     const end = cumulativeAngle;
@@ -46,8 +49,8 @@ export const DonutChart: React.FC<DonutChartProps> = ({
     const yi2 = cy + innerR * Math.sin(toRad(end));
     const largeArc = angle > 180 ? 1 : 0;
 
-    const path = pct === 1
-      ? `M ${cx + r} ${cy} A ${r} ${r} 0 1 1 ${cx + r - 0.001} ${cy} Z`
+    const path = pct >= 0.999
+      ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.01} ${cy - r} L ${cx - 0.01} ${cy - innerR} A ${innerR} ${innerR} 0 1 0 ${cx} ${cy - innerR} Z`
       : `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} L ${xi2} ${yi2} A ${innerR} ${innerR} 0 ${largeArc} 0 ${xi1} ${yi1} Z`;
 
     return { ...seg, path, pct, index: i };
@@ -66,17 +69,29 @@ export const DonutChart: React.FC<DonutChartProps> = ({
         {/* SVG Donut */}
         <div className="relative flex-shrink-0">
           <svg width="120" height="120" viewBox="0 0 120 120">
-            {arcs.map((arc, i) => (
-              <path
-                key={i}
-                d={arc.path}
-                fill={arc.color}
-                onMouseEnter={() => setHovered(i)}
-                onMouseLeave={() => setHovered(null)}
-                className="transition-opacity cursor-pointer"
-                style={{ opacity: hovered === null || hovered === i ? 1 : 0.4 }}
+            {rawTotal === 0 ? (
+              <circle
+                cx="60"
+                cy="60"
+                r={(r + innerR) / 2}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={r - innerR}
+                className="text-slate-100 dark:text-slate-800"
               />
-            ))}
+            ) : (
+              arcs.filter(a => a.path).map((arc, i) => (
+                <path
+                  key={i}
+                  d={arc.path}
+                  fill={arc.color}
+                  onMouseEnter={() => setHovered(arc.index)}
+                  onMouseLeave={() => setHovered(null)}
+                  className="transition-opacity cursor-pointer"
+                  style={{ opacity: hovered === null || hovered === arc.index ? 1 : 0.4 }}
+                />
+              ))
+            )}
             {/* Center text */}
             <text x="60" y="54" textAnchor="middle" className="fill-slate-900 dark:fill-white"
               style={{ fontSize: 9, fontWeight: 700, fontFamily: 'inherit' }}>
@@ -84,7 +99,7 @@ export const DonutChart: React.FC<DonutChartProps> = ({
             </text>
             <text x="60" y="68" textAnchor="middle" className="fill-slate-900 dark:fill-white"
               style={{ fontSize: 11, fontWeight: 800, fontFamily: 'inherit' }}>
-              {activeSegment ? fmt(activeSegment.value) : (centerValue ?? fmt(total))}
+              {activeSegment ? fmt(activeSegment.value) : (centerValue ?? fmt(rawTotal))}
             </text>
           </svg>
         </div>
