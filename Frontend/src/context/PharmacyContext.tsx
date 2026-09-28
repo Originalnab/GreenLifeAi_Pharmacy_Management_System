@@ -299,7 +299,8 @@ const PharmacyContext = createContext<PharmacyContextType | undefined>(undefined
 export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
-      const savedSession = localStorage.getItem('greenlife_auth_session');
+      // Strictly use sessionStorage so app always returns to Login Page upon every fresh launch
+      const savedSession = sessionStorage.getItem('greenlife_auth_session');
       return !!savedSession;
     } catch {
       return false;
@@ -308,9 +309,10 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
     try {
-      const savedSession = localStorage.getItem('greenlife_auth_session');
+      const savedSession = sessionStorage.getItem('greenlife_auth_session');
       if (savedSession) {
         const parsed = JSON.parse(savedSession);
+        if (parsed.user) return parsed.user;
         const matched = initialUsers.find(u => u.id === parsed.userId);
         if (matched) return matched;
       }
@@ -1451,11 +1453,10 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
         setIsAuthenticated(true);
         setFailedLoginAttempts(0);
         setLockoutUntil(null);
-        if (rememberMe) {
-          try {
-            localStorage.setItem('greenlife_auth_session', JSON.stringify({ userId: mappedUser.id, user: mappedUser, loggedAt: Date.now() }));
-          } catch {}
-        }
+        try {
+          sessionStorage.setItem('greenlife_auth_session', JSON.stringify({ userId: mappedUser.id, user: mappedUser, loggedAt: Date.now() }));
+          localStorage.removeItem('greenlife_auth_session'); // Purge any legacy auto-login session
+        } catch {}
         showNotification('success', `Welcome back, ${mappedUser.name}! (${mappedUser.role})`, 'Authentication Successful');
         logAuditEvent('USER_LOGIN_SUCCESS', 'security', mappedUser.id, `User ${mappedUser.name} (${mappedUser.role}) signed in successfully`);
 
@@ -1491,6 +1492,7 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
     setIsAuthenticated(false);
     setIsScreenLocked(false);
     try {
+      sessionStorage.removeItem('greenlife_auth_session');
       localStorage.removeItem('greenlife_auth_session');
     } catch {}
     logAuditEvent('USER_LOGOUT', 'security', currentUser.id, `User ${currentUser.name} signed out cleanly`);
@@ -1625,10 +1627,10 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
           role: nextRole
         };
         try {
-          const savedSession = localStorage.getItem('greenlife_auth_session');
+          const savedSession = sessionStorage.getItem('greenlife_auth_session');
           if (savedSession) {
             const parsed = JSON.parse(savedSession);
-            localStorage.setItem('greenlife_auth_session', JSON.stringify({ ...parsed, user: updated }));
+            sessionStorage.setItem('greenlife_auth_session', JSON.stringify({ ...parsed, user: updated }));
           }
         } catch {}
         return updated;
@@ -1660,10 +1662,10 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
     setCurrentUser(prev => {
       const updated = { ...prev, role: newRole };
       try {
-        const savedSession = localStorage.getItem('greenlife_auth_session');
+        const savedSession = sessionStorage.getItem('greenlife_auth_session');
         if (savedSession) {
           const parsed = JSON.parse(savedSession);
-          localStorage.setItem('greenlife_auth_session', JSON.stringify({ ...parsed, user: updated }));
+          sessionStorage.setItem('greenlife_auth_session', JSON.stringify({ ...parsed, user: updated }));
         }
       } catch {}
       return updated;
@@ -1875,10 +1877,10 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (currentUser.id === userId && updatedTarget) {
       setCurrentUser(updatedTarget);
       try {
-        const savedSession = localStorage.getItem('greenlife_auth_session');
+        const savedSession = sessionStorage.getItem('greenlife_auth_session');
         if (savedSession) {
           const parsed = JSON.parse(savedSession);
-          localStorage.setItem('greenlife_auth_session', JSON.stringify({ ...parsed, userName: updatedTarget.name }));
+          sessionStorage.setItem('greenlife_auth_session', JSON.stringify({ ...parsed, userName: updatedTarget.name }));
         }
       } catch {}
     }

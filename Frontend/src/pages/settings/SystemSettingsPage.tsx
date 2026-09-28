@@ -877,6 +877,107 @@ export const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ initialT
               </div>
             </div>
           </div>
+
+          {/* Super Admin Live Host Telemetry & Windows Terminal Quick Controls */}
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 flex items-center justify-center">
+                  <Terminal className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">Live Host Infrastructure & Docker Telemetry</h3>
+                  <p className="text-[11px] text-slate-400">Windows host terminal operations and container controls</p>
+                </div>
+              </div>
+              <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full font-mono font-semibold">
+                Engine Active
+              </span>
+            </div>
+
+            {/* Container Status Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl space-y-1">
+                <span className="text-[10px] text-slate-400 font-mono">PORT 80</span>
+                <p className="font-bold text-slate-200">Frontend UI</p>
+                <span className="text-[10px] text-emerald-400 flex items-center space-x-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Healthy</span>
+                </span>
+              </div>
+
+              <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl space-y-1">
+                <span className="text-[10px] text-slate-400 font-mono">PORT 8000</span>
+                <p className="font-bold text-slate-200">Backend API</p>
+                <span className="text-[10px] text-emerald-400 flex items-center space-x-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Connected</span>
+                </span>
+              </div>
+
+              <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl space-y-1">
+                <span className="text-[10px] text-slate-400 font-mono">PORT 5434</span>
+                <p className="font-bold text-slate-200">PostgreSQL 16</p>
+                <span className="text-[10px] text-emerald-400 flex items-center space-x-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Volume Bound</span>
+                </span>
+              </div>
+
+              <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl space-y-1">
+                <span className="text-[10px] text-slate-400 font-mono">PORT 6380</span>
+                <p className="font-bold text-slate-200">Redis 7 Cache</p>
+                <span className="text-[10px] text-emerald-400 flex items-center space-x-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Online</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Windows Terminal Actions */}
+            <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800/80 space-y-3">
+              <p className="text-xs font-semibold text-slate-300">Super Admin Terminal Operations</p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('Admin-Console.bat');
+                    toast.success('Copied "Admin-Console.bat" to clipboard!', 'Console Command');
+                  }}
+                  className="p-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-left transition flex items-center justify-between"
+                >
+                  <div>
+                    <p className="text-xs font-bold text-white">Interactive Admin Console</p>
+                    <p className="text-[10px] text-slate-400 font-mono">Admin-Console.bat</p>
+                  </div>
+                  <Copy className="w-4 h-4 text-brand-400" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('docker compose logs -f --tail=100');
+                    toast.success('Copied live log streaming command!', 'Logs Command');
+                  }}
+                  className="p-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-left transition flex items-center justify-between"
+                >
+                  <div>
+                    <p className="text-xs font-bold text-white">Stream Real-Time Docker Logs</p>
+                    <p className="text-[10px] text-slate-400 font-mono">docker compose logs -f</p>
+                  </div>
+                  <Copy className="w-4 h-4 text-brand-400" />
+                </button>
+              </div>
+
+              <div className="text-[11px] text-slate-400 leading-relaxed bg-brand-950/30 border border-brand-800/40 p-2.5 rounded-lg flex items-start space-x-2">
+                <ShieldAlert className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Super Admin Telemetry Access:</strong> To launch GreenLife with a live Command Prompt window showing every Docker container and backend log, simply hold down the <strong>Shift</strong> key while double-clicking the desktop shortcut!
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

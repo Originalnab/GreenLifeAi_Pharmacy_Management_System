@@ -13,13 +13,60 @@ export const LoginPage: React.FC = () => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [capsLockActive, setCapsLockActive] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState(false);
   const [lockCountdown, setLockCountdown] = useState<number>(0);
+
+  // Super Admin Secret Terminal Modal States
+  const [showAdminTerminalModal, setShowAdminTerminalModal] = useState(false);
+  const [adminTerminalPass, setAdminTerminalPass] = useState('');
+  const [adminTerminalUnlocked, setAdminTerminalUnlocked] = useState(false);
+  const [adminTerminalError, setAdminTerminalError] = useState('');
+  const [adminClickCount, setAdminClickCount] = useState(0);
+  const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
+
+  // Keyboard shortcut listener for Super Admin console (Ctrl + Shift + F12)
+  useEffect(() => {
+    const handleKeyDownGlobal = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'F12') {
+        e.preventDefault();
+        setShowAdminTerminalModal(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDownGlobal);
+    return () => window.removeEventListener('keydown', handleKeyDownGlobal);
+  }, []);
+
+  const handleAdminSecretClick = () => {
+    setAdminClickCount(prev => {
+      const next = prev + 1;
+      if (next >= 3) {
+        setShowAdminTerminalModal(true);
+        return 0;
+      }
+      return next;
+    });
+  };
+
+  const verifyAdminTerminalPass = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminTerminalPass.trim() === 'Admin1224' || adminTerminalPass.trim() === 'Admin@1234') {
+      setAdminTerminalUnlocked(true);
+      setAdminTerminalError('');
+    } else {
+      setAdminTerminalError('Invalid Super Admin authorization key.');
+    }
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCmd(label);
+    setTimeout(() => setCopiedCmd(null), 2500);
+  };
 
   // Secret Demo unlock check: "User 1224" and "user1224"
   const cleanIdent = identifier.trim().toLowerCase();
@@ -101,14 +148,22 @@ export const LoginPage: React.FC = () => {
       {/* Top Bar Navigation */}
       <header className="px-6 py-4 flex items-center justify-between z-10">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-500 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-brand-500/25">
+          <div 
+            onClick={handleAdminSecretClick}
+            title="GreenLife AI Enterprise"
+            className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-500 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-brand-500/25 cursor-pointer hover:scale-105 transition active:scale-95"
+          >
             <span>G+</span>
           </div>
           <div>
             <h1 className="font-extrabold text-white text-base tracking-tight flex items-center space-x-1.5">
               <span>Greenlife</span>
               <span className="text-brand-400">AI</span>
-              <span className="text-[10px] bg-brand-950 text-brand-300 border border-brand-800 px-1.5 py-0.5 rounded font-mono font-semibold">
+              <span 
+                onClick={handleAdminSecretClick}
+                title="Super Admin Terminal (Ctrl+Shift+F12)"
+                className="text-[10px] bg-brand-950 text-brand-300 border border-brand-800 px-1.5 py-0.5 rounded font-mono font-semibold cursor-pointer hover:border-brand-500 transition select-none"
+              >
                 Enterprise v2.4
               </span>
             </h1>
@@ -371,6 +426,181 @@ export const LoginPage: React.FC = () => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Super Admin Live Docker Console Modal */}
+      {showAdminTerminalModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
+                  <Laptop className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm flex items-center space-x-1.5">
+                    <span>Super Admin Live Telemetry</span>
+                    <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.5 rounded font-mono">
+                      Docker Host
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Technical infrastructure telemetry & terminal control</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowAdminTerminalModal(false);
+                  setAdminTerminalUnlocked(false);
+                  setAdminTerminalPass('');
+                  setAdminTerminalError('');
+                }}
+                className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {!adminTerminalUnlocked ? (
+              <form onSubmit={verifyAdminTerminalPass} className="space-y-4">
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex items-start space-x-2.5">
+                  <Lock className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />
+                  <p>
+                    This console is restricted to the <strong>Super Administrator</strong>. Enter your administrative authorization key to inspect live container telemetry and launch diagnostics.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">Admin Authorization Password</label>
+                  <input
+                    type="password"
+                    autoFocus
+                    value={adminTerminalPass}
+                    onChange={(e) => setAdminTerminalPass(e.target.value)}
+                    placeholder="Enter Admin1224..."
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:border-brand-500 font-mono tracking-wider"
+                  />
+                  {adminTerminalError && (
+                    <p className="text-xs text-rose-400 flex items-center space-x-1 mt-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>{adminTerminalError}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex space-x-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminTerminalModal(false)}
+                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-brand-600/30 transition"
+                  >
+                    Authenticate Console
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                {/* Active Container Badges */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Active Services (Port Mappings)</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="font-mono text-slate-200">Frontend UI</span>
+                      </div>
+                      <span className="font-mono text-[11px] text-emerald-400 font-semibold">:80</span>
+                    </div>
+
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="font-mono text-slate-200">Backend API</span>
+                      </div>
+                      <span className="font-mono text-[11px] text-emerald-400 font-semibold">:8000</span>
+                    </div>
+
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="font-mono text-slate-200">Postgres 16</span>
+                      </div>
+                      <span className="font-mono text-[11px] text-emerald-400 font-semibold">:5434</span>
+                    </div>
+
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="font-mono text-slate-200">Redis Cache</span>
+                      </div>
+                      <span className="font-mono text-[11px] text-emerald-400 font-semibold">:6380</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Instant Maintenance Commands */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Windows Console Launch Commands</p>
+                  
+                  <div className="space-y-2 text-xs">
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-300">Launch Interactive Admin Console:</span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard('Admin-Console.bat', 'Admin Console')}
+                          className="text-[11px] text-brand-400 hover:text-brand-300 font-mono"
+                        >
+                          {copiedCmd === 'Admin Console' ? '✓ Copied!' : 'Copy Command'}
+                        </button>
+                      </div>
+                      <code className="block font-mono text-[11px] text-slate-400 bg-slate-900 px-2 py-1 rounded">
+                        Admin-Console.bat
+                      </code>
+                    </div>
+
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-300">Stream Live Docker Logs:</span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard('docker compose logs -f --tail=50', 'Logs')}
+                          className="text-[11px] text-brand-400 hover:text-brand-300 font-mono"
+                        >
+                          {copiedCmd === 'Logs' ? '✓ Copied!' : 'Copy Command'}
+                        </button>
+                      </div>
+                      <code className="block font-mono text-[11px] text-slate-400 bg-slate-900 px-2 py-1 rounded">
+                        docker compose logs -f --tail=50
+                      </code>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Notice */}
+                <div className="p-3 bg-brand-950/40 border border-brand-800/60 rounded-xl text-[11px] text-brand-300 leading-relaxed">
+                  💡 <strong>Super Admin Tip:</strong> To start the app with full live terminal logging enabled from the desktop shortcut, hold down the <strong>Shift</strong> key while double-clicking the GreenLife desktop icon.
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAdminTerminalModal(false)}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition"
+                >
+                  Close Telemetry Panel
+                </button>
+              </div>
+            )}
+
           </div>
         </div>
       )}

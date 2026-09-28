@@ -32,10 +32,12 @@ build/
 logs/
 *.log
 npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-
-# Editor & OS files
+# Database backups and update logs
+backups/
+*.sql
+*log.txt
+greenlife_update_log.txt
+greenlife_diagnostic_log.txt
 .vscode/
 !.vscode/extensions.json
 .idea/
