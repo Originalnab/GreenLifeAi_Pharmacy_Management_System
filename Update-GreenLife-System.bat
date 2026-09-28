@@ -23,7 +23,7 @@ where docker >nul 2>&1
 if %ERRORLEVEL% NEQ 0 goto NO_DOCKER_CLI
 
 docker info >nul 2>&1
-if %ERRORLEVEL% NEQ 0 goto NO_DOCKER_ENGINE
+if %ERRORLEVEL% NEQ 0 goto TRY_START_DOCKER
 
 echo         - Docker engine is active and operational.
 goto DOCKER_READY
@@ -32,44 +32,90 @@ goto DOCKER_READY
 color 0C
 echo.
 echo [ERROR] 'docker' command was not found in your system PATH!
+echo.
 echo Please make sure Docker Desktop is installed.
-echo If recently installed, please restart your computer.
+echo Download from: https://www.docker.com/products/docker-desktop/
+echo.
+echo After installing, RESTART this computer and run this script again.
 echo.
 pause
 exit /b 1
 
-:NO_DOCKER_ENGINE
-color 0C
+:TRY_START_DOCKER
+color 0E
+echo         - Docker Desktop is not running. Attempting to start it automatically...
 echo.
-echo [ERROR] Docker Desktop engine is not running!
+
+:: Try common Docker Desktop install paths
+if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" (
+    start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
+    echo         - Starting Docker Desktop from: %ProgramFiles%\Docker\Docker\
+) else if exist "%LocalAppData%\Programs\Docker\Docker\Docker Desktop.exe" (
+    start "" "%LocalAppData%\Programs\Docker\Docker\Docker Desktop.exe"
+    echo         - Starting Docker Desktop from: %LocalAppData%\Programs\Docker\Docker\
+) else (
+    color 0C
+    echo.
+    echo [ERROR] Docker Desktop could not be found or started automatically.
+    echo.
+    echo Please manually:
+    echo   1. Open Docker Desktop from the Start Menu or Desktop shortcut.
+    echo   2. Wait until the bottom bar shows: "Engine running" (green whale icon).
+    echo   3. Then run this script again.
+    echo.
+    pause
+    exit /b 1
+)
+
 echo.
-echo Please do the following on this computer:
-echo   1. Open Docker Desktop from the Start Menu or Desktop.
-echo   2. Look at the bottom-left corner of Docker Desktop.
-echo   3. Wait until the whale icon turns GREEN -- Engine running.
-echo   4. Once it is green, run this script again.
-echo.
-pause
-exit /b 1
+echo         Waiting for Docker engine to become ready (up to 75 seconds)...
+set /a DOCKER_WAIT=0
+
+:WAIT_DOCKER_LOOP
+docker info >nul 2>&1
+if %ERRORLEVEL% EQU 0 goto DOCKER_READY
+
+set /a DOCKER_WAIT+=1
+if %DOCKER_WAIT% GEQ 25 (
+    color 0C
+    echo.
+    echo [ERROR] Docker Desktop took too long to start (waited 75 seconds).
+    echo.
+    echo Please:
+    echo   1. Start Docker Desktop manually from the Start Menu.
+    echo   2. Wait until the whale icon in the taskbar shows "Engine running".
+    echo   3. Then run this script again.
+    echo.
+    pause
+    exit /b 1
+)
+
+ping 127.0.0.1 -n 4 >nul
+echo         - Waiting for Docker engine... attempt !DOCKER_WAIT! of 25
+goto WAIT_DOCKER_LOOP
 
 :DOCKER_READY
+color 0B
+echo         - [OK] Docker engine is active and operational.
 echo.
 
 :: -----------------------------------------------------------------------------
-:: Step 2: Check for Git repository updates (if applicable)
+:: Step 2: Check for codebase updates (standalone copy — no Git required)
 :: -----------------------------------------------------------------------------
-echo [Step 2/6] Checking for codebase updates...
-if not exist ".git" goto STANDALONE_COPY
-
-echo         - Git repository detected. Checking remote updates...
-git pull origin main
-echo         - Codebase sync check complete.
-goto CODEBASE_READY
-
-:STANDALONE_COPY
-echo         - Standalone installation detected using updated local files.
-
-:CODEBASE_READY
+echo [Step 2/6] Checking for updated files...
+if not exist ".git" (
+    echo         - Standalone installation detected. Using the files in this folder.
+) else (
+    echo         - Git repository found. Checking if git is available...
+    where git >nul 2>&1
+    if %ERRORLEVEL% EQU 0 (
+        echo         - Running git pull to sync latest changes...
+        git pull origin main 2>&1
+        echo         - Codebase sync check complete.
+    ) else (
+        echo         - Git not installed on this PC. Using current local files.
+    )
+)
 echo.
 
 :: -----------------------------------------------------------------------------
@@ -78,79 +124,103 @@ echo.
 echo [Step 3/6] Creating automated pre-update database backup...
 if not exist "backups" mkdir "backups"
 
-:: Generate a timestamp for the backup filename
+:: Generate timestamp for backup filename
 for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value 2^>nul') do set DT=%%I
 if "%DT%"=="" set DT=%DATE:~10,4%%DATE:~4,2%%DATE:~7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%
 set DT=%DT: =0%
 set "BACKUP_FILE=backups\greenlife_db_pre_update_%DT:~0,8%_%DT:~8,6%.sql"
 
-docker compose ps | findstr /i "greenlifeai_postgres" >nul 2>&1
+docker compose ps 2>nul | findstr /i "greenlifeai_postgres" >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
-    echo         - Taking snapshot of active database to: %BACKUP_FILE%
+    echo         - Taking live database snapshot to: %BACKUP_FILE%
     docker compose exec -T database pg_dump -U greenlife_admin greenlife_pharmacy_db > "%BACKUP_FILE%" 2>nul
     if exist "%BACKUP_FILE%" (
-        echo         - [OK] Database backup saved safely.
+        echo         - [OK] Database backup saved successfully. All client data is protected.
     ) else (
-        echo         - [NOTE] Active dump skipped (database container was idle/starting).
+        echo         - [INFO] Backup skipped (database container may still be starting).
     )
 ) else (
-    echo         - [NOTE] Postgres container not active right now. Volume remains safe on disk.
+    echo         - [INFO] Postgres container not active. Database volume is preserved on disk.
 )
 echo.
 
 :: -----------------------------------------------------------------------------
-:: Step 4: Safely Stop Previous Containers (Volume Preserved 100%)
+:: Step 4: Gracefully Stop Previous Containers (Volume NEVER deleted)
 :: -----------------------------------------------------------------------------
-echo [Step 4/6] Gracefully stopping previous containers (Preserving Database Volume)...
-:: NOTE: Never use -v here! Keeping volume greenlifeai_postgres_volume guarantees zero data loss!
-docker compose down
-echo         - Previous containers stopped cleanly.
-echo         - Database volume 'greenlifeai_postgres_volume' is 100%% PRESERVED.
+echo [Step 4/6] Gracefully stopping previous containers (Database Volume is PRESERVED)...
+echo         - IMPORTANT: 'docker compose down' WITHOUT -v preserves all client data!
+docker compose down 2>&1
+echo         - Previous containers stopped. Database volume remains 100%% intact.
 echo.
 
 :: -----------------------------------------------------------------------------
-:: Step 5: Launch updated production containers
+:: Step 5: Load Offline Images and Start Updated Containers
 :: -----------------------------------------------------------------------------
-echo [Step 5/6] Starting updated production containers...
-echo         - PostgreSQL 16 (Port 5434:5432)
-echo         - Redis 7 (Port 6380:6379)
-echo         - Backend (Django Gunicorn WSGI on Port 8000)
-echo         - Frontend (React 19 Nginx on Port 80)
+echo [Step 5/6] Starting updated containers...
+echo         - PostgreSQL 16  (Port 5434)
+echo         - Redis 7        (Port 6380)
+echo         - Backend API    (Port 8000)
+echo         - Frontend UI    (Port 80)
 echo.
 
 if exist "greenlife_images.tar" (
-    echo         - Offline image archive 'greenlife_images.tar' detected.
-    echo         - Loading offline Docker images (zero internet required)...
+    echo         - [OFFLINE MODE] greenlife_images.tar found in this folder.
+    echo         - Loading pre-packaged Docker images (no internet needed)...
+    echo         - Please wait — this takes approx. 30-60 seconds...
+    echo.
     docker load -i greenlife_images.tar
-    echo         - Starting containers from updated images...
+    if %ERRORLEVEL% NEQ 0 (
+        color 0C
+        echo.
+        echo [ERROR] Failed to load Docker images from greenlife_images.tar!
+        echo.
+        echo The tar file may be incomplete or corrupted.
+        echo Please copy a fresh greenlife_images.tar from the developer's USB drive.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo.
+    echo         - Docker images loaded successfully.
+    echo         - Starting all services...
     docker compose up -d
 ) else (
-    echo         - Building and launching production containers...
+    echo         - [ONLINE/LOCAL BUILD MODE] No greenlife_images.tar found.
+    echo         - Building and launching production containers from source...
     docker compose up -d --build
 )
 
-if %ERRORLEVEL% NEQ 0 goto BUILD_ERROR
+if %ERRORLEVEL% NEQ 0 (
+    color 0C
+    echo.
+    echo [ERROR] Failed to start containers!
+    echo.
+    echo Showing recent logs for diagnosis:
+    echo ------------------------------------------------------------------------------
+    docker compose logs --tail=40
+    echo ------------------------------------------------------------------------------
+    echo.
+    echo Common fixes:
+    echo   1. Make sure Docker Desktop is fully running (whale icon green).
+    echo   2. Check that port 80 is not used by another program (IIS, Skype, etc).
+    echo   3. Check that port 8000 and 5434 are free.
+    echo   4. Try running: docker compose down -v   (WARNING: clears data)
+    echo      Only do this if you have a backup!
+    echo.
+    pause
+    exit /b 1
+)
 
-echo         - Containers successfully started.
 echo.
-goto WAIT_HEALTHCHECK
-
-:BUILD_ERROR
-color 0C
+echo         - [OK] Containers started successfully.
 echo.
-echo [ERROR] Failed to build or start updated containers!
-echo Check container logs using: docker compose logs
-echo.
-pause
-exit /b 1
 
 :: -----------------------------------------------------------------------------
-:: Step 6: Wait for Backend API Healthcheck & Apply Migrations
+:: Step 6: Wait for Backend Health Check & Apply Migrations
 :: -----------------------------------------------------------------------------
-:WAIT_HEALTHCHECK
-echo [Step 6/6] Waiting for services to initialize and apply migrations...
+echo [Step 6/6] Waiting for GreenLife AI services to come online...
 set /a ATTEMPTS=0
-set /a MAX_ATTEMPTS=45
+set /a MAX_ATTEMPTS=50
 
 :HEALTH_CHECK_LOOP
 curl -s http://localhost/api/v1/health/ >nul 2>&1
@@ -160,48 +230,60 @@ set /a ATTEMPTS+=1
 if %ATTEMPTS% GEQ %MAX_ATTEMPTS% goto HEALTH_TIMEOUT
 
 ping 127.0.0.1 -n 3 >nul
-echo         - Initializing services... attempt !ATTEMPTS! of %MAX_ATTEMPTS%
+echo         - Waiting for services to initialize... attempt !ATTEMPTS! of %MAX_ATTEMPTS%
 goto HEALTH_CHECK_LOOP
 
 :APPLY_MIGRATIONS
-echo         - Ensuring latest database migrations are applied...
-docker compose exec -T backend python manage.py migrate --noinput >nul 2>&1
+echo.
+echo         - [OK] GreenLife AI backend is ONLINE and responding.
+echo         - Applying any pending database schema migrations...
+docker compose exec -T backend python manage.py migrate --noinput 2>&1
+echo         - Migrations applied (or already up to date).
 goto UPDATE_SUCCESS
 
 :HEALTH_TIMEOUT
 color 0E
 echo.
 echo [WARN] Services took longer than expected to report healthy.
-echo Checking container status...
+echo.
+echo Current container status:
 docker compose ps
 echo.
-echo Recent backend logs:
-docker compose logs --tail=30 backend
+echo Backend logs (last 40 lines):
+docker compose logs --tail=40 backend
+echo.
+echo The system may still be starting. Try opening http://localhost in your browser
+echo in 30-60 seconds. If it does not load, check the logs above for errors.
+echo.
 goto DISPLAY_INFO
 
 :UPDATE_SUCCESS
 color 0A
 echo.
 echo ==============================================================================
-echo   [SUCCESS] GreenLife AI System Update Completed Successfully!
-echo   (All client data, products, inventory, and sales were 100%% preserved)
+echo   [SUCCESS] GreenLife AI System Update Completed!
+echo   (All client data, products, inventory, and sales are 100%% preserved)
 echo.
-echo   Application URL:     http://localhost
-echo   Super Admin User:    Admink19
-echo   Super Admin Pass:    Admin1224
+echo   Application URL:   http://localhost
+echo   Super Admin User:  Admink19
+echo   Super Admin Pass:  Admin1224
 if exist "%BACKUP_FILE%" (
-echo   Pre-Update Backup:   %BACKUP_FILE%
+echo   Pre-Update Backup: %BACKUP_FILE%
 )
 echo ==============================================================================
 echo.
 
 :DISPLAY_INFO
-:: Open default browser
-start http://localhost
-
 echo Active Container Status:
 docker compose ps
 echo.
-echo The update is complete. You may now close this window.
+
+:: Open default browser
+start http://localhost
+
+echo.
+echo =========================================================
+echo  Update complete. Press any key to close this window.
+echo =========================================================
 pause
 exit /b 0

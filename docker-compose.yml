@@ -41,11 +41,15 @@ services:
 
   # --------------------------------------------------------------------------
   # 3. GreenLife AI Backend (Django REST Framework / Gunicorn WSGI)
+  # NOTE: 'image:' tag is required so docker compose up -d uses the pre-loaded
+  # offline image (from greenlife_images.tar) on the client PC, regardless of
+  # the project folder name. Without this, Docker tries to rebuild from source.
   # --------------------------------------------------------------------------
   backend:
     build:
       context: ./Backend
       dockerfile: Dockerfile
+    image: greenlifeai_pharmacy_management_system-backend:latest
     container_name: greenlifeai_backend
     volumes:
       - ./Backend:/app
@@ -73,11 +77,15 @@ services:
 
   # --------------------------------------------------------------------------
   # 4. GreenLife AI Frontend (React 19 / Nginx Web Server & Reverse Proxy)
+  # NOTE: 'image:' tag is required so docker compose up -d uses the pre-loaded
+  # offline image (from greenlife_images.tar) on the client PC, regardless of
+  # the project folder name. Without this, Docker tries to rebuild from source.
   # --------------------------------------------------------------------------
   frontend:
     build:
       context: ./Frontend
       dockerfile: Dockerfile
+    image: greenlifeai_pharmacy_management_system-frontend:latest
     container_name: greenlifeai_frontend
     ports:
       - "80:80"
