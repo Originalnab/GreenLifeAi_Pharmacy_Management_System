@@ -2472,12 +2472,12 @@ export const PurchasingPage: React.FC = () => {
                       <th className="p-2 min-w-[125px]">Batch / Lot # <span className="text-rose-500">*</span></th>
                       <th className="p-2 w-28">Mfg Date</th>
                       <th className="p-2 w-32">Expiry Date <span className="text-rose-500">*</span></th>
-                      <th className="p-2 w-24 text-center">Qty <span className="text-rose-500">*</span></th>
-                      <th className="p-2 w-28 text-right">Unit Cost ({currentCurrency.symbol}) <span className="text-rose-500">*</span></th>
-                      <th className="p-2 w-32 text-right">Subtotal Cost ({currentCurrency.symbol})</th>
-                      <th className="p-2 w-28 text-right">Unit Sell ({currentCurrency.symbol}) <span className="text-rose-500">*</span></th>
-                      <th className="p-2 w-32 text-right">Subtotal Retail ({currentCurrency.symbol})</th>
-                      <th className="p-2 min-w-[140px] text-center">Profit & Margin</th>
+                      <th className="p-2 w-28 min-w-[110px] text-center">Qty <span className="text-rose-500">*</span></th>
+                      <th className="p-2 w-32 min-w-[120px] text-right">Unit Cost ({currentCurrency.symbol}) <span className="text-rose-500">*</span></th>
+                      <th className="p-2 w-32 min-w-[125px] text-right">Subtotal Cost ({currentCurrency.symbol})</th>
+                      <th className="p-2 w-32 min-w-[120px] text-right">Unit Sell ({currentCurrency.symbol}) <span className="text-rose-500">*</span></th>
+                      <th className="p-2 w-32 min-w-[125px] text-right">Subtotal Retail ({currentCurrency.symbol})</th>
+                      <th className="p-2 min-w-[185px] text-center">Profit & Margin</th>
                       <th className="p-2 text-center w-10">Action</th>
                     </tr>
                   </thead>
@@ -2633,100 +2633,128 @@ export const PurchasingPage: React.FC = () => {
                             <span className="text-[10px] text-brand-600 font-medium mt-0.5 block">FEFO Key</span>
                           </td>
 
-                          {/* Received Qty */}
-                          <td className="p-2">
-                            <input
-                              type="number"
-                              min="1"
-                              required
-                              disabled={purchaseModalMode === 'view'}
-                              value={item.qty}
-                              onChange={e => handleUpdateGRNItem(item.id, 'qty', parseInt(e.target.value) || 0)}
-                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-center focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs text-emerald-600 disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
-                              placeholder="Qty"
-                            />
-                            <span className="text-[10px] text-slate-400 text-center block mt-0.5">
-                              {activeUnit}s
-                            </span>
+                          {/* Received Qty (Prominent & Readable) */}
+                          <td className="p-2 text-center">
+                            <div className="space-y-1">
+                              <input
+                                type="number"
+                                min="1"
+                                required
+                                disabled={purchaseModalMode === 'view'}
+                                value={item.qty}
+                                onChange={e => handleUpdateGRNItem(item.id, 'qty', parseInt(e.target.value) || 0)}
+                                className="w-full px-2.5 py-2 border rounded-xl bg-white dark:bg-slate-900 font-mono font-extrabold text-center focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-sm text-emerald-600 dark:text-emerald-400 shadow-sm disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
+                                placeholder="Qty"
+                              />
+                              <span className="inline-block px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-300 rounded-md">
+                                {activeUnit}s
+                              </span>
+                            </div>
                           </td>
 
-                          {/* Unit Cost Price Column */}
+                          {/* Unit Cost Price Column (Prominent & Readable) */}
                           <td className="p-2 text-right">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              required
-                              disabled={purchaseModalMode === 'view'}
-                              value={item.unitCost}
-                              onChange={e => handleUpdateGRNItem(item.id, 'unitCost', parseFloat(e.target.value) || 0)}
-                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
-                              placeholder="Unit Cost"
-                            />
-                            <span className="text-[10px] text-slate-400 block mt-0.5 truncate">
-                              Cost / {activeUnit}
-                            </span>
+                            <div className="space-y-1">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                required
+                                disabled={purchaseModalMode === 'view'}
+                                value={item.unitCost}
+                                onChange={e => handleUpdateGRNItem(item.id, 'unitCost', parseFloat(e.target.value) || 0)}
+                                className="w-full px-2.5 py-2 border rounded-xl bg-white dark:bg-slate-900 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-sm text-slate-900 dark:text-white shadow-sm disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
+                                placeholder="0.00"
+                              />
+                              <span className="text-[11px] text-slate-400 block font-medium">
+                                Cost / {activeUnit}
+                              </span>
+                            </div>
                           </td>
 
                           {/* Subtotal Cost Column (Qty * Unit Cost) */}
-                          <td className="p-2 text-right bg-slate-50/50 dark:bg-slate-800/30">
-                            <div className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                          <td className="p-2 text-right bg-slate-50/60 dark:bg-slate-800/30">
+                            <div className="font-mono font-extrabold text-slate-900 dark:text-white text-sm">
                               {formatCurrency(lineCostSubtotal)}
                             </div>
-                            <span className="text-[10px] text-slate-400 block mt-0.5 font-mono truncate">
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5 font-mono">
                               {item.qty} × {formatCurrency(item.unitCost)}
                             </span>
                           </td>
 
-                          {/* Unit Selling Price Column */}
+                          {/* Unit Selling Price Column (Prominent & Readable) */}
                           <td className="p-2 text-right">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              required
-                              disabled={purchaseModalMode === 'view'}
-                              value={item.sellingPrice}
-                              onChange={e => handleUpdateGRNItem(item.id, 'sellingPrice', parseFloat(e.target.value) || 0)}
-                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs text-brand-600 disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
-                              placeholder="Unit Sell"
-                            />
-                            <span className="text-[10px] text-brand-600/80 font-medium block mt-0.5 truncate">
-                              Sell / {activeUnit}
-                            </span>
+                            <div className="space-y-1">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                required
+                                disabled={purchaseModalMode === 'view'}
+                                value={item.sellingPrice}
+                                onChange={e => handleUpdateGRNItem(item.id, 'sellingPrice', parseFloat(e.target.value) || 0)}
+                                className="w-full px-2.5 py-2 border rounded-xl bg-white dark:bg-slate-900 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-sm text-brand-600 dark:text-brand-400 shadow-sm disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
+                                placeholder="0.00"
+                              />
+                              <span className="text-[11px] text-brand-600 dark:text-brand-400 block font-medium">
+                                Sell / {activeUnit}
+                              </span>
+                            </div>
                           </td>
 
                           {/* Subtotal Retail Column (Qty * Selling Price) */}
                           <td className="p-2 text-right bg-emerald-50/30 dark:bg-emerald-950/20">
-                            <div className="font-mono font-bold text-emerald-700 dark:text-emerald-300 text-xs">
+                            <div className="font-mono font-extrabold text-emerald-700 dark:text-emerald-300 text-sm">
                               {formatCurrency(lineRetailSubtotal)}
                             </div>
-                            <span className="text-[10px] text-emerald-600/80 block mt-0.5 font-mono truncate">
+                            <span className="text-[11px] text-emerald-600/90 dark:text-emerald-400/90 block mt-0.5 font-mono">
                               {item.qty} × {formatCurrency(item.sellingPrice)}
                             </span>
                           </td>
 
-                          {/* Profit & Margin Column */}
+                          {/* Profit & Margin Column (Well-Represented, High Contrast & Highly Readable) */}
                           <td className="p-2 text-center">
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-center space-x-1 font-mono text-[10px]">
-                                <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                                  +{formatCurrency(unitProfit)}/u
+                            <div className={`p-2.5 rounded-xl border text-center space-y-1.5 shadow-sm min-w-[175px] ${
+                              lineProfit < 0
+                                ? 'bg-rose-50/90 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800'
+                                : 'bg-emerald-50/90 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800'
+                            }`}>
+                              {/* Total Net Profit */}
+                              <div className="flex items-center justify-between px-1">
+                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                  Total Net
                                 </span>
-                                <span className="text-slate-300 dark:text-slate-600">|</span>
-                                <span className="font-bold text-teal-600 dark:text-teal-400">
-                                  +{formatCurrency(lineProfit)} tot
+                                <span className={`font-mono text-sm font-extrabold ${
+                                  lineProfit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-300'
+                                }`}>
+                                  {lineProfit >= 0 ? '+' : ''}{formatCurrency(lineProfit)}
                                 </span>
                               </div>
-                              <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                marginPercent < 0 
-                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' 
-                                  : marginPercent < 20 
-                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' 
-                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              }`}>
-                                {marginPercent < 0 ? `⚠️ Loss (${marginPercent.toFixed(1)}%)` : marginPercent < 20 ? `⚠️ Low (${marginPercent.toFixed(1)}%)` : `✓ ${marginPercent.toFixed(1)}% mgn`}
-                              </span>
+
+                              {/* Unit Profit */}
+                              <div className="flex items-center justify-between px-1 text-[11px] font-mono text-slate-600 dark:text-slate-300">
+                                <span className="text-slate-400 text-[10px]">Per Unit</span>
+                                <span className="font-bold text-slate-700 dark:text-slate-200">
+                                  {unitProfit >= 0 ? '+' : ''}{formatCurrency(unitProfit)}
+                                </span>
+                              </div>
+
+                              {/* High-Contrast Margin Chip */}
+                              <div className="pt-0.5">
+                                <span className={`w-full inline-flex items-center justify-center py-1 px-2.5 rounded-lg text-[11px] font-extrabold shadow-sm ${
+                                  marginPercent < 0 
+                                    ? 'bg-rose-600 text-white' 
+                                    : marginPercent < 20 
+                                    ? 'bg-amber-500 text-white' 
+                                    : 'bg-emerald-600 text-white'
+                                }`}>
+                                  {marginPercent < 0 
+                                    ? `⚠️ Negative (${marginPercent.toFixed(1)}%)` 
+                                    : marginPercent < 20 
+                                    ? `⚠️ Low (${marginPercent.toFixed(1)}%)` 
+                                    : `✓ ${marginPercent.toFixed(1)}% Margin`}
+                                </span>
+                              </div>
                             </div>
                           </td>
 
