@@ -7,36 +7,49 @@ cd /d "%~dp0"
 title GreenLife AI - Automated Production Update Utility (Data-Preserving)
 color 0B
 
-echo ==============================================================================
-echo            GREENLIFE AI PHARMACY MANAGEMENT SYSTEM
-echo             Production System Updater (Zero Data Loss)
-echo ==============================================================================
-echo Script Location: %~dp0
-echo.
+:: -- Write ALL output to a log file (survives even if window closes) --
+set "LOGFILE=%~dp0greenlife_update_log.txt"
+echo GreenLife Update Log - %DATE% %TIME% > "%LOGFILE%"
+echo Script Location: %~dp0 >> "%LOGFILE%"
+echo. >> "%LOGFILE%"
+:: Redirect both stdout and stderr to log AND screen simultaneously
+call :LOG "================================================================================"
+call :LOG "           GREENLIFE AI PHARMACY MANAGEMENT SYSTEM"
+call :LOG "            Production System Updater (Zero Data Loss)"
+call :LOG "================================================================================"
+call :LOG "Script Location: %~dp0"
+call :LOG ""
+goto MAIN
+
+:LOG
+echo %~1
+echo %~1 >> "%LOGFILE%"
+goto :EOF
+
+:MAIN
 
 :: -----------------------------------------------------------------------------
 :: Step 1: Verify Docker Desktop is installed and operational
 :: -----------------------------------------------------------------------------
-echo [Step 1/6] Checking Docker Desktop status...
+call :LOG "[Step 1/6] Checking Docker Desktop status..."
 
-where docker >nul 2>&1
+where docker >> "%LOGFILE%" 2>&1
 if %ERRORLEVEL% NEQ 0 goto NO_DOCKER_CLI
+call :LOG "         - docker command found in PATH."
 
-docker info >nul 2>&1
+docker info >> "%LOGFILE%" 2>&1
 if %ERRORLEVEL% NEQ 0 goto TRY_START_DOCKER
 
-echo         - Docker engine is active and operational.
+call :LOG "         - Docker engine is active and operational."
 goto DOCKER_READY
 
 :NO_DOCKER_CLI
 color 0C
-echo.
-echo [ERROR] 'docker' command was not found in your system PATH!
-echo.
-echo Please make sure Docker Desktop is installed.
-echo Download from: https://www.docker.com/products/docker-desktop/
-echo.
-echo After installing, RESTART this computer and run this script again.
+call :LOG ""
+call :LOG "[FATAL] STEP 1 FAILED: 'docker' command not found in PATH."
+call :LOG "FIX: Install Docker Desktop and restart the PC."
+call :LOG "Download: https://www.docker.com/products/docker-desktop/"
+call :LOG "Log file saved to: %LOGFILE%"
 echo.
 pause
 exit /b 1
