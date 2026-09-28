@@ -132,7 +132,6 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
 
       worksheet.columns = [
         { header: 'Medicine Name (Required)', key: 'name', width: 32 },
-        { header: 'Generic Name', key: 'generic', width: 30 },
         { header: 'Category', key: 'category', width: 32 },
         { header: 'Dosage Form', key: 'form', width: 20 },
         { header: 'Strength', key: 'strength', width: 18 },
@@ -292,7 +291,6 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
   const handleDownloadCsvTemplate = () => {
     const headers = [
       'Medicine Name',
-      'Generic Name',
       'Category',
       'Dosage Form',
       'Strength',
@@ -304,11 +302,11 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
       'Prescription Required'
     ];
     const sampleRows = [
-      'Amoxil 500mg,Amoxicillin Trihydrate,Antibiotics & Anti-Infectives,Capsule,500mg,Capsule,1.20,2.50,8901032104501,50,Yes',
-      'Panadol Extra,Paracetamol + Caffeine,Analgesics & Antipyretics,Tablet,500mg/65mg,Tablet,0.50,1.00,8901032104502,100,No',
-      'Paracetamol Paediatric,Paracetamol Oral,Analgesics & Antipyretics,Syrup,120mg/5mL,Bottle,12.00,20.00,8901032104503,30,No',
-      'Gentamicin Injection,Gentamicin Sulfate,Antibiotics & Anti-Infectives,Injection,80mg/2mL,Vial,3.50,7.00,8901032104504,20,Yes',
-      'Insulin Mixtard 30/70,Biphasic Isophane Insulin,Antidiabetics & Endocrine,Injection,100IU/mL,Vial,85.00,130.00,,20,Yes'
+      'Amoxil 500mg,Antibiotics & Anti-Infectives,Capsule,500mg,Capsule,1.20,2.50,8901032104501,50,Yes',
+      'Panadol Extra,Analgesics & Antipyretics,Tablet,500mg/65mg,Tablet,0.50,1.00,8901032104502,100,No',
+      'Paracetamol Paediatric,Analgesics & Antipyretics,Syrup,120mg/5mL,Bottle,12.00,20.00,8901032104503,30,No',
+      'Gentamicin Injection,Antibiotics & Anti-Infectives,Injection,80mg/2mL,Vial,3.50,7.00,8901032104504,20,Yes',
+      'Insulin Mixtard 30/70,Antidiabetics & Endocrine,Injection,100IU/mL,Vial,85.00,130.00,,20,Yes'
     ];
 
     const templateContent = [headers.join(','), ...sampleRows].join('\n');
@@ -919,12 +917,6 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
                       <td className="p-2.5 text-rose-600 italic">Must be provided</td>
                     </tr>
                     <tr>
-                      <td className="p-2.5 font-bold text-slate-900 dark:text-white">Generic Name</td>
-                      <td className="p-2.5"><span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium text-[10px]">Optional</span></td>
-                      <td className="p-2.5 text-slate-500">Free text (e.g. Amoxicillin)</td>
-                      <td className="p-2.5 text-slate-500">Defaults to Medicine Name</td>
-                    </tr>
-                    <tr>
                       <td className="p-2.5 font-bold text-slate-900 dark:text-white">Category</td>
                       <td className="p-2.5"><span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium text-[10px]">Optional</span></td>
                       <td className="p-2.5 font-semibold text-emerald-600">✅ Dropdown (Antibiotics, Analgesics, etc.)</td>
@@ -1070,7 +1062,7 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
                       <th className="p-2.5">Status</th>
                       <th className="p-2.5">Auto-Generated ID</th>
                       <th className="p-2.5">Attached Batch & Expiry</th>
-                      <th className="p-2.5">Medicine & Generic Name</th>
+                      <th className="p-2.5">Medicine Name</th>
                       <th className="p-2.5">Category</th>
                       <th className="p-2.5">Form & Unit</th>
                       <th className="p-2.5 text-right">Cost Price</th>
@@ -1122,7 +1114,6 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
                         </td>
                         <td className="p-2.5">
                           <p className="font-bold text-slate-900 dark:text-white">{r.brandName || <span className="text-rose-500 italic">Missing Name</span>}</p>
-                          <p className="text-[11px] text-slate-500">{r.genericName}</p>
                           {r.errors.length > 0 && (
                             <p className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold mt-0.5">⚠️ {r.errors.join(', ')}</p>
                           )}

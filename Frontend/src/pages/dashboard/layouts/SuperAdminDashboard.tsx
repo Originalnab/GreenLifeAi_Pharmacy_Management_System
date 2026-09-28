@@ -265,7 +265,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onNavi
                   <tr key={p.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition">
                     <td className="px-4 py-3">
                       <p className="font-bold text-slate-900 dark:text-slate-100">{p.brandName}</p>
-                      <p className="text-[10px] text-slate-500">{p.genericName} · {p.strength}</p>
+                      <p className="text-[10px] text-slate-500">{p.strength || p.dosageForm || 'Dispensary Item'}</p>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{p.categoryName}</td>
                     <td className="px-4 py-3 font-semibold">{p.availableQuantity.toLocaleString()}</td>

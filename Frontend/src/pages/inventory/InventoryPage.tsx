@@ -3,7 +3,7 @@ import {
   Boxes, Clock, ShieldAlert, History, ClipboardCheck, 
   AlertTriangle, Trash2, ArrowUpDown, Search, CheckCircle2, X, FileSpreadsheet,
   Plus, Info, BookOpen, HelpCircle, PackageCheck, Sparkles, ShieldCheck,
-  Calendar, TrendingUp, RefreshCw
+  Calendar, TrendingUp, RefreshCw, RotateCcw, Printer, Download
 } from 'lucide-react';
 import { usePharmacy } from '../../context/PharmacyContext';
 import { Batch } from '../../types';
@@ -12,11 +12,12 @@ import { WorkflowGuideNotice } from '../../components/common/WorkflowGuideNotice
 import { FieldGuideNotice } from '../../components/common/FieldGuideNotice';
 import { Pagination } from '../../components/common/Pagination';
 import { usePagination } from '../../hooks/usePagination';
+import { downloadCsv, printOrSavePdf } from '../../utils/exportUtils';
 
 export const InventoryPage: React.FC = () => {
   const { 
-    batches, stockMovements, quarantineBatch, disposeBatch, 
-    products, currentUser, formatCurrency, currentCurrency, receiveStock,
+    batches, stockMovements, quarantineBatch, restoreBatch, disposeBatch, 
+    products, currentUser, systemProfile, formatCurrency, currentCurrency, receiveStock,
     toast, confirmDialog
   } = usePharmacy();
   const [activeTab, setActiveTab] = useState<'batches' | 'ledger' | 'quarantine' | 'counts'>('batches');
@@ -299,16 +300,21 @@ export const InventoryPage: React.FC = () => {
       }
       return {
         productId: r.productId,
-        batchNumber: r.batchNumber,
-        mfgDate: r.mfgDate,
-        expDate: r.expDate,
+        productName: prod?.brandName || '',
+        batchNumber: r.batchNumber.trim(),
+        mfgDate: r.mfgDate ? r.mfgDate.split('T')[0] : '',
+        expDate: r.expDate ? r.expDate.split('T')[0] : '',
         qty: r.qty,
         unitCost: r.unitCost,
         sellingPrice: r.sellingPrice,
         packagingTiers,
         updateMasterSellingPrice
       };
-    }));
+    }), {
+      supplierName: 'Physical Stock Inventory / Adjustment',
+      storageLocation: intakeMeta.defaultLocation,
+      deliveryNote: intakeMeta.reason
+    });
 
     toast.success(`Successfully recorded stock intake for ${intakeRows.length} product lines under reference ${refCode}!`, 'Stock Intake Recorded');
     setShowIntakeModal(false);
@@ -391,49 +397,217 @@ export const InventoryPage: React.FC = () => {
     );
   };
 
-  // Export handlers
+  // Export & Restore Handlers
   const handleExportBatchesCSV = () => {
-    const targets = batches.filter(b => selectedBatchIds.includes(b.id));
-    if (targets.length === 0) return;
-    const headers = ['Product Name', 'Batch Number', 'Mfg Date', 'Expiry Date', 'Location', 'Available Qty', 'Selling Price', 'Status'];
+    const targets = selectedBatchIds.length > 0 
+      ? batches.filter(b => selectedBatchIds.includes(b.id))
+      : filteredBatches;
+
+    if (targets.length === 0) {
+      toast.warning('No batches available to export to CSV.', 'Export Empty');
+      return;
+    }
+
+    const headers = ['Product Name', 'Batch Number', 'Mfg Date', 'Expiry Date', 'Storage Location', 'Available Qty', 'Unit Cost', 'Selling Price', 'Total Retail Value', 'Status'];
     const rows = targets.map(b => [
-      `"${b.productName}"`,
-      `"${b.batchNumber}"`,
+      b.productName,
+      b.batchNumber,
       b.manufacturingDate,
       b.expiryDate,
-      `"${b.storageLocation}"`,
+      b.storageLocation,
       b.availableQuantity,
+      b.unitCost || 0,
       b.sellingPrice,
+      (b.availableQuantity * b.sellingPrice).toFixed(2),
       b.status
     ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const link = document.createElement('a');
-    link.href = encodeURI(csvContent);
-    link.download = `inventory_batches_${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
+
+    downloadCsv(`inventory_batches_${new Date().toISOString().slice(0, 10)}`, headers, rows);
+    toast.success(`Exported ${targets.length} batch records to CSV.`, 'Download Complete');
+  };
+
+  const handleExportBatchesPDF = () => {
+    const targets = selectedBatchIds.length > 0 
+      ? batches.filter(b => selectedBatchIds.includes(b.id))
+      : filteredBatches;
+
+    if (targets.length === 0) {
+      toast.warning('No batches available to export to PDF.', 'Export Empty');
+      return;
+    }
+
+    const totalStock = targets.reduce((acc, b) => acc + (b.availableQuantity || 0), 0);
+    const totalRetailVal = targets.reduce((acc, b) => acc + ((b.availableQuantity || 0) * (b.sellingPrice || 0)), 0);
+    const activeCount = targets.filter(b => b.status === 'ACTIVE').length;
+    const nearExpiryCount = targets.filter(b => b.status === 'NEAR_EXPIRY').length;
+
+    printOrSavePdf({
+      title: 'INVENTORY BATCHES & STOCK ON-HAND DOSSIER',
+      subtitle: 'Authoritative Dispensary Stock Ledger, FEFO Expiry Tracking & Shelf Valuation',
+      dateLabel: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      pharmacyProfile: systemProfile,
+      summaryCards: [
+        { label: 'Total Batches', value: `${targets.length} Lots` },
+        { label: 'Stock On-Hand', value: `${totalStock.toLocaleString()} Units` },
+        { label: 'Retail Valuation', value: formatCurrency(totalRetailVal) },
+        { label: 'Active / Near Expiry', value: `${activeCount} / ${nearExpiryCount}` },
+      ],
+      tableHeaders: ['Product / Formulation', 'Batch Lot', 'Mfg Date', 'Expiry Date', 'Location', 'Available Qty', 'Retail Price', 'Status'],
+      tableRows: targets.map(b => [
+        b.productName,
+        b.batchNumber,
+        b.manufacturingDate,
+        b.expiryDate,
+        b.storageLocation,
+        `${b.availableQuantity} units`,
+        formatCurrency(b.sellingPrice),
+        b.status
+      ]),
+      authorName: currentUser.name,
+      authorRole: currentUser.role
+    });
+
+    toast.info('Generating official Inventory Batches PDF...', 'PDF Export');
   };
 
   const handleExportLedgerCSV = () => {
-    const targets = stockMovements.filter(m => selectedLedgerIds.includes(m.id));
-    if (targets.length === 0) return;
-    const headers = ['Timestamp', 'Type', 'Product', 'Batch', 'Delta', 'Before', 'After', 'Ref #', 'Actor', 'Reason'];
+    const targets = selectedLedgerIds.length > 0 
+      ? stockMovements.filter(m => selectedLedgerIds.includes(m.id))
+      : filteredMovements;
+
+    if (targets.length === 0) {
+      toast.warning('No movement ledger entries to export.', 'Export Empty');
+      return;
+    }
+
+    const headers = ['Timestamp', 'Type', 'Product', 'Batch', 'Quantity Delta', 'Balance Before', 'Balance After', 'Reference #', 'Actor', 'Reason'];
     const rows = targets.map(m => [
-      `"${m.timestamp}"`,
+      m.timestamp,
       m.movementType,
-      `"${m.productName}"`,
-      `"${m.batchNumber}"`,
+      m.productName,
+      m.batchNumber,
       m.quantity,
       m.balanceBefore,
       m.balanceAfter,
-      `"${m.referenceNumber}"`,
-      `"${m.actorName}"`,
-      `"${m.reason || ''}"`
+      m.referenceNumber,
+      m.actorName,
+      m.reason || ''
     ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const link = document.createElement('a');
-    link.href = encodeURI(csvContent);
-    link.download = `stock_ledger_${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
+
+    downloadCsv(`stock_movement_ledger_${new Date().toISOString().slice(0, 10)}`, headers, rows);
+    toast.success(`Exported ${targets.length} movement ledger entries to CSV.`, 'Download Complete');
+  };
+
+  const handleExportLedgerPDF = () => {
+    const targets = selectedLedgerIds.length > 0 
+      ? stockMovements.filter(m => selectedLedgerIds.includes(m.id))
+      : filteredMovements;
+
+    if (targets.length === 0) {
+      toast.warning('No movement ledger entries to export to PDF.', 'Export Empty');
+      return;
+    }
+
+    const netDelta = targets.reduce((acc, m) => acc + (m.quantity || 0), 0);
+    const saleMovements = targets.filter(m => m.movementType === 'POS_SALE').length;
+    const intakeMovements = targets.filter(m => m.movementType === 'PURCHASE_RECEIVE').length;
+
+    printOrSavePdf({
+      title: 'STOCK MOVEMENT & DISPENSARY AUDIT LEDGER',
+      subtitle: 'Immutable Transaction History, Batch Transfers & Stock Allocations',
+      dateLabel: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      pharmacyProfile: systemProfile,
+      summaryCards: [
+        { label: 'Ledger Records', value: `${targets.length} Events` },
+        { label: 'Net Unit Delta', value: `${netDelta > 0 ? '+' : ''}${netDelta} Units` },
+        { label: 'POS Dispenses', value: `${saleMovements} Orders` },
+        { label: 'Inward Receipts', value: `${intakeMovements} Inward` },
+      ],
+      tableHeaders: ['Timestamp', 'Type', 'Product', 'Batch Lot', 'Delta', 'After', 'Ref #', 'Actor'],
+      tableRows: targets.map(m => [
+        m.timestamp,
+        m.movementType,
+        m.productName,
+        m.batchNumber,
+        `${m.quantity > 0 ? '+' : ''}${m.quantity}`,
+        m.balanceAfter,
+        m.referenceNumber,
+        m.actorName
+      ]),
+      authorName: currentUser.name,
+      authorRole: currentUser.role
+    });
+
+    toast.info('Generating official Stock Movement Ledger PDF...', 'PDF Export');
+  };
+
+  const handleRestoreBatch = async (batch: Batch) => {
+    const restoreUnits = batch.quantityOnHand > 0 ? batch.quantityOnHand : batch.initialStock;
+    const confirmed = await confirmDialog({
+      title: 'Release Batch from Quarantine?',
+      message: `Authorize release of Batch #${batch.batchNumber} (${batch.productName}) back to active dispensary shelf stock? This will reinstate ${restoreUnits} units for POS dispensing.`,
+      confirmText: 'Confirm Quality Clearance & Restore',
+      cancelText: 'Cancel',
+      variant: 'primary'
+    });
+    if (confirmed) {
+      restoreBatch(batch.id, 'Supervisory quality clearance: Batch inspected and approved for active dispensary distribution.');
+      setSelectedQuarantineIds(prev => prev.filter(id => id !== batch.id));
+    }
+  };
+
+  const handleBulkRestoreQuarantine = async () => {
+    if (selectedQuarantineIds.length === 0) return;
+    const confirmed = await confirmDialog({
+      title: `Release ${selectedQuarantineIds.length} Batches from Quarantine?`,
+      message: `Are you sure you want to release all ${selectedQuarantineIds.length} selected batches back to active dispensing shelf stock?`,
+      confirmText: `Release ${selectedQuarantineIds.length} Batches to Shelf`,
+      cancelText: 'Cancel',
+      variant: 'primary'
+    });
+    if (confirmed) {
+      selectedQuarantineIds.forEach(id => {
+        restoreBatch(id, 'Bulk supervisory clearance: Batches approved for shelf distribution.');
+      });
+      setSelectedQuarantineIds([]);
+    }
+  };
+
+  const handleExportQuarantinePDF = () => {
+    const targets = selectedQuarantineIds.length > 0
+      ? quarantinedBatches.filter(b => selectedQuarantineIds.includes(b.id))
+      : quarantinedBatches;
+
+    if (targets.length === 0) {
+      toast.warning('No quarantine records to export.', 'Export Empty');
+      return;
+    }
+
+    const totalIsolatedUnits = targets.reduce((acc, b) => acc + (b.quantityOnHand || 0), 0);
+
+    printOrSavePdf({
+      title: 'CLINICAL QUARANTINE & DISPOSAL RECORD DOSSIER',
+      subtitle: 'Restricted Batch Isolations, Recalls & Destruction Documentation',
+      dateLabel: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      pharmacyProfile: systemProfile,
+      summaryCards: [
+        { label: 'Isolated Batches', value: `${targets.length} Lots` },
+        { label: 'Isolated Units', value: `${totalIsolatedUnits.toLocaleString()} Units` },
+        { label: 'Regulatory Protocol', value: 'Quarantined / Barred' },
+      ],
+      tableHeaders: ['Product / Formulation', 'Batch Lot', 'Isolated Qty', 'Location', 'Status'],
+      tableRows: targets.map(b => [
+        b.productName,
+        b.batchNumber,
+        `${b.quantityOnHand} units`,
+        b.storageLocation,
+        b.status
+      ]),
+      authorName: currentUser.name,
+      authorRole: currentUser.role
+    });
+
+    toast.info('Generating official Quarantine PDF...', 'PDF Export');
   };
 
   const handleQuarantine = () => {
@@ -629,6 +803,27 @@ export const InventoryPage: React.FC = () => {
               <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
                 FEFO Ordered
               </span>
+
+              <div className="flex items-center space-x-1.5 border-l border-slate-200 dark:border-slate-700 pl-2">
+                <button
+                  type="button"
+                  onClick={handleExportBatchesCSV}
+                  className="px-2.5 py-1.5 border rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 flex items-center space-x-1 shadow-sm transition"
+                  title="Download Batches as Excel CSV"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="hidden sm:inline">CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportBatchesPDF}
+                  className="px-2.5 py-1.5 border rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 flex items-center space-x-1 shadow-sm transition"
+                  title="Print or Save Batches Inventory Dossier (PDF)"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="hidden sm:inline">PDF</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -770,9 +965,15 @@ export const InventoryPage: React.FC = () => {
             onClearSelection={() => setSelectedBatchIds([])}
             actions={[
               {
-                label: 'Export Batches CSV',
+                label: 'Export CSV',
                 icon: FileSpreadsheet,
                 onClick: handleExportBatchesCSV,
+                variant: 'secondary'
+              },
+              {
+                label: 'Print / PDF',
+                icon: Printer,
+                onClick: handleExportBatchesPDF,
                 variant: 'secondary'
               }
             ]}
@@ -805,6 +1006,27 @@ export const InventoryPage: React.FC = () => {
                 <option value="DISPOSAL_WRITE_OFF">Disposal Write-off</option>
                 <option value="INVENTORY_ADJUSTMENT">Inventory Adjustment</option>
               </select>
+
+              <div className="flex items-center space-x-1.5 border-l border-slate-200 dark:border-slate-700 pl-2">
+                <button
+                  type="button"
+                  onClick={handleExportLedgerCSV}
+                  className="px-2.5 py-1.5 border rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 flex items-center space-x-1 shadow-sm transition"
+                  title="Download Ledger as Excel CSV"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="hidden sm:inline">CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportLedgerPDF}
+                  className="px-2.5 py-1.5 border rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 flex items-center space-x-1 shadow-sm transition"
+                  title="Print or Save Movement Ledger Dossier (PDF)"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="hidden sm:inline">PDF</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -917,9 +1139,15 @@ export const InventoryPage: React.FC = () => {
             onClearSelection={() => setSelectedLedgerIds([])}
             actions={[
               {
-                label: 'Export Ledger CSV',
+                label: 'Export CSV',
                 icon: FileSpreadsheet,
                 onClick: handleExportLedgerCSV,
+                variant: 'secondary'
+              },
+              {
+                label: 'Print / PDF',
+                icon: Printer,
+                onClick: handleExportLedgerPDF,
                 variant: 'secondary'
               }
             ]}
@@ -1016,17 +1244,31 @@ export const InventoryPage: React.FC = () => {
                           </span>
                         </td>
                         <td className="p-3 text-right">
-                          {b.status !== 'DISPOSED' && (
-                            <button
-                              onClick={() => {
-                                setSelectedBatch(b);
-                                setShowDisposeModal(true);
-                              }}
-                              className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded font-bold text-[10px]"
-                            >
-                              Execute Destruction
-                            </button>
-                          )}
+                          <div className="flex items-center justify-end space-x-2">
+                            {b.status === 'QUARANTINED' && (
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreBatch(b)}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-[10px] flex items-center space-x-1 shadow-sm transition"
+                                title="Authorize quality clearance and return to active dispensing shelf"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Restore to Shelf</span>
+                              </button>
+                            )}
+                            {b.status !== 'DISPOSED' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedBatch(b);
+                                  setShowDisposeModal(true);
+                                }}
+                                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded font-bold text-[10px] shadow-sm transition"
+                              >
+                                Execute Destruction
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1050,9 +1292,15 @@ export const InventoryPage: React.FC = () => {
             onClearSelection={() => setSelectedQuarantineIds([])}
             actions={[
               {
-                label: 'Export Isolation List',
-                icon: FileSpreadsheet,
-                onClick: () => toast.info(`Exporting ${selectedQuarantineIds.length} isolated batch records...`, 'Export Started'),
+                label: 'Restore Selected to Shelf',
+                icon: RotateCcw,
+                onClick: handleBulkRestoreQuarantine,
+                variant: 'primary'
+              },
+              {
+                label: 'Export Isolation List (PDF)',
+                icon: Printer,
+                onClick: handleExportQuarantinePDF,
                 variant: 'secondary'
               }
             ]}
@@ -1355,7 +1603,7 @@ export const InventoryPage: React.FC = () => {
                               >
                                 {products.map(p => (
                                   <option key={p.id} value={p.id}>
-                                    {p.brandName} ({p.genericName}) [Stock: {p.availableQuantity}]
+                                    {p.brandName} {p.strength ? `• ${p.strength}` : ''} [Stock: {p.availableQuantity}]
                                   </option>
                                 ))}
                               </select>

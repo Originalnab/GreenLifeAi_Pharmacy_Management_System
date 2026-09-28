@@ -101,21 +101,30 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
   // Packaging & Pricing Predictor State for Product Modal
   const [baseUnit, setBaseUnit] = useState('Tablet');
   const [customUnitMode, setCustomUnitMode] = useState(false);
+  const [packagingMode, setPackagingMode] = useState<'SINGLE_UNIT' | 'MULTI_TIER'>('MULTI_TIER');
+  const [pricingMethod, setPricingMethod] = useState<'STRIP_FIRST' | 'BOX_FIRST'>('STRIP_FIRST');
+  const [stripsPerBox, setStripsPerBox] = useState(10);
+  const [tabletsPerStrip, setTabletsPerStrip] = useState(10);
+  const [allowSellBox, setAllowSellBox] = useState(true);
+  const [allowSellStrip, setAllowSellStrip] = useState(true);
+  const [allowSellPiece, setAllowSellPiece] = useState(true);
+  const [isCustomPricing, setIsCustomPricing] = useState(false);
+
   const [hasStrip, setHasStrip] = useState(true);
   const [stripMultiplier, setStripMultiplier] = useState(10);
   const [hasPack, setHasPack] = useState(true);
   const [packMultiplier, setPackMultiplier] = useState(100);
   const [bulkDiscountPercent, setBulkDiscountPercent] = useState(globalBulkDiscountPercent || 10);
 
-  // Base pricing for Product Modal
-  const [pieceCost, setPieceCost] = useState(18.00);
-  const [piecePrice, setPiecePrice] = useState(30.00);
+  // Base pricing (Loose piece / single bottle)
+  const [pieceCost, setPieceCost] = useState(1.80);
+  const [piecePrice, setPiecePrice] = useState(3.00);
 
   // Packaging tiers prices
-  const [stripCost, setStripCost] = useState(180.00);
-  const [stripPrice, setStripPrice] = useState(280.00);
-  const [packCost, setPackCost] = useState(1800.00);
-  const [packPrice, setPackPrice] = useState(2600.00);
+  const [stripCost, setStripCost] = useState(18.00);
+  const [stripPrice, setStripPrice] = useState(28.50);
+  const [packCost, setPackCost] = useState(180.00);
+  const [packPrice, setPackPrice] = useState(270.00);
 
   // Form general state for Product Modal
   const [formData, setFormData] = useState({
@@ -219,36 +228,91 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
 
   const canCreate = hasPermission('catalogue', 'create');
 
-  // Intelligent Price Predictor from Piece Price
-  const predictFromPiecePrice = (pPrice: number, pCost: number) => {
-    const rawStripPrice = pPrice * stripMultiplier;
-    const sPrice = Math.round(rawStripPrice * (1 - (bulkDiscountPercent * 0.5) / 100) * 100) / 100;
+  // Re-calculate all tiers from Strip Price (STRIP_FIRST mode)
+  const calculateFromStrip = (
+    sCost: number, 
+    sPrice: number, 
+    strips: number = stripsPerBox, 
+    tabs: number = tabletsPerStrip,
+    discount: number = bulkDiscountPercent
+  ) => {
+    setStripCost(sCost);
     setStripPrice(sPrice);
-    setStripCost(Math.round(pCost * stripMultiplier * 100) / 100);
+    
+    const totalTabs = Math.max(1, strips * tabs);
+    setPackMultiplier(totalTabs);
+    setStripMultiplier(tabs);
 
-    const rawPackPrice = pPrice * packMultiplier;
-    const pkPrice = Math.round(rawPackPrice * (1 - bulkDiscountPercent / 100) * 100) / 100;
-    setPackPrice(pkPrice);
-    setPackCost(Math.round(pCost * packMultiplier * 100) / 100);
+    // Box Wholesale Cost = stripCost * strips
+    const bCost = Math.round(sCost * strips * 100) / 100;
+    setPackCost(bCost);
+
+    // Box Selling Price (slight bulk incentive e.g. 5% off strip price)
+    const rawBoxPrice = sPrice * strips;
+    const bPrice = Math.round(rawBoxPrice * (1 - (discount * 0.5) / 100) * 100) / 100;
+    setPackPrice(bPrice);
+
+    // Loose Piece Cost = stripCost / tabletsPerStrip
+    const pCost = tabs > 0 ? Math.round((sCost / tabs) * 100) / 100 : 0;
+    setPieceCost(pCost);
+
+    // Loose Piece Selling Price (~15% markup on loose piece)
+    const rawPiece = tabs > 0 ? (sPrice / tabs) * 1.15 : 0;
+    const pPrice = Math.round(rawPiece * 100) / 100;
+    setPiecePrice(pPrice);
   };
 
-  // Intelligent Price Decomposition from Pack Price
-  const decomposeFromPackPrice = (pkPrice: number, pkCost: number) => {
-    if (packMultiplier <= 0) return;
-    const baseP = pkPrice / packMultiplier;
-    const singleP = Math.round(baseP * 1.15 * 100) / 100;
-    setPiecePrice(singleP);
-    setPieceCost(Math.round((pkCost / packMultiplier) * 10000) / 10000);
+  // Re-calculate all tiers from Box Price (BOX_FIRST mode)
+  const calculateFromBox = (
+    bCost: number, 
+    bPrice: number, 
+    strips: number = stripsPerBox, 
+    tabs: number = tabletsPerStrip
+  ) => {
+    setPackCost(bCost);
+    setPackPrice(bPrice);
 
-    const sPrice = Math.round((pkPrice / (packMultiplier / stripMultiplier)) * 1.05 * 100) / 100;
+    const totalTabs = Math.max(1, strips * tabs);
+    setPackMultiplier(totalTabs);
+    setStripMultiplier(tabs);
+
+    // Strip Cost = boxCost / strips
+    const sCost = strips > 0 ? Math.round((bCost / strips) * 100) / 100 : 0;
+    setStripCost(sCost);
+
+    // Strip Selling Price = (boxPrice / strips) * 1.05
+    const sPrice = strips > 0 ? Math.round(((bPrice / strips) * 1.05) * 100) / 100 : 0;
     setStripPrice(sPrice);
-    setStripCost(Math.round((pkCost / (packMultiplier / stripMultiplier)) * 100) / 100);
+
+    // Loose Piece Cost = boxCost / totalTabs
+    const pCost = totalTabs > 0 ? Math.round((bCost / totalTabs) * 100) / 100 : 0;
+    setPieceCost(pCost);
+
+    // Loose Piece Selling Price = (boxPrice / totalTabs) * 1.20
+    const pPrice = totalTabs > 0 ? Math.round(((bPrice / totalTabs) * 1.20) * 100) / 100 : 0;
+    setPiecePrice(pPrice);
   };
 
-  // Live Margin Calculations on Piece Tier
-  const profitAmount = piecePrice - pieceCost;
-  const marginPercent = piecePrice > 0 ? ((piecePrice - pieceCost) / piecePrice) * 100 : 0;
-  const markupPercent = pieceCost > 0 ? ((piecePrice - pieceCost) / pieceCost) * 100 : 0;
+  // Update packaging dimensions (strips in box / tablets in strip)
+  const handleDimensionChange = (newStrips: number, newTabs: number) => {
+    const validStrips = Math.max(1, newStrips);
+    const validTabs = Math.max(1, newTabs);
+    setStripsPerBox(validStrips);
+    setTabletsPerStrip(validTabs);
+
+    if (pricingMethod === 'STRIP_FIRST') {
+      calculateFromStrip(stripCost, stripPrice, validStrips, validTabs);
+    } else {
+      calculateFromBox(packCost, packPrice, validStrips, validTabs);
+    }
+  };
+
+  // Live Margin Calculations
+  const activeCost = packagingMode === 'SINGLE_UNIT' ? pieceCost : (pricingMethod === 'STRIP_FIRST' ? stripCost : packCost);
+  const activePrice = packagingMode === 'SINGLE_UNIT' ? piecePrice : (pricingMethod === 'STRIP_FIRST' ? stripPrice : packPrice);
+  const profitAmount = activePrice - activeCost;
+  const marginPercent = activePrice > 0 ? ((activePrice - activeCost) / activePrice) * 100 : 0;
+  const markupPercent = activeCost > 0 ? ((activePrice - activeCost) / activeCost) * 100 : 0;
 
   // Margin Risk Assessment
   const getMarginRisk = (margin: number) => {
@@ -285,27 +349,53 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
 
   const riskInfo = getMarginRisk(marginPercent);
 
+  const isSingleUnitForm = (form: string) => {
+    const singleUnits = ['Syrup', 'Suspension', 'Injection', 'Cream', 'Ointment', 'Eye Drops', 'Ear Drops', 'Inhaler', 'Suppository', 'Sachet', 'Lotion', 'Gel', 'Solution', 'Spray', 'Drops'];
+    return singleUnits.includes(form);
+  };
+
   // Handle Intelligent Auto-Suggestion when Dosage Form changes
   const handleDosageFormChange = (newForm: string) => {
     setFormData(prev => ({ ...prev, dosageForm: newForm as any }));
     const preset = dosagePresets[newForm];
-    if (preset) {
-      setBaseUnit(preset.baseUnit);
-      setCustomUnitMode(false);
-      setHasStrip(preset.hasStrip);
-      setStripMultiplier(preset.stripMultiplier);
-      setHasPack(preset.hasPack);
-      setPackMultiplier(preset.packMultiplier);
-      if (!formData.packSize || formData.packSize.includes('Pack') || formData.packSize.includes('Bottle') || formData.packSize.includes('Tube') || formData.packSize.includes('Canister')) {
-        setFormData(prev => ({ ...prev, packSize: preset.packDescription }));
-      }
-      const rawStrip = piecePrice * preset.stripMultiplier;
-      setStripPrice(Math.round(rawStrip * (1 - (bulkDiscountPercent * 0.5) / 100)));
-      setStripCost(pieceCost * preset.stripMultiplier);
 
-      const rawPack = piecePrice * preset.packMultiplier;
-      setPackPrice(Math.round(rawPack * (1 - bulkDiscountPercent / 100)));
-      setPackCost(pieceCost * preset.packMultiplier);
+    if (isSingleUnitForm(newForm)) {
+      setPackagingMode('SINGLE_UNIT');
+      setAllowSellBox(false);
+      setAllowSellStrip(false);
+      setAllowSellPiece(true);
+      setHasStrip(false);
+      setHasPack(false);
+      if (preset) {
+        const u = preset.baseUnit === 'mL' || preset.baseUnit === 'Actuation'
+          ? (preset.recommendedUnits.find(ru => ru !== 'mL' && ru !== 'Actuation') || 'Bottle')
+          : preset.baseUnit;
+        setBaseUnit(u);
+        setCustomUnitMode(false);
+        setPieceCost(30.00);
+        setPiecePrice(45.00);
+      }
+    } else {
+      setPackagingMode('MULTI_TIER');
+      setAllowSellBox(true);
+      setAllowSellStrip(true);
+      setAllowSellPiece(true);
+      setHasStrip(true);
+      setHasPack(true);
+      if (preset) {
+        setBaseUnit(preset.baseUnit);
+        setCustomUnitMode(false);
+        const tabs = preset.stripMultiplier || 10;
+        const total = preset.packMultiplier || 100;
+        const strips = Math.max(1, Math.round(total / tabs));
+        setStripsPerBox(strips);
+        setTabletsPerStrip(tabs);
+        calculateFromStrip(18.00, 28.50, strips, tabs);
+      }
+    }
+
+    if (preset && (!formData.packSize || formData.packSize.includes('Pack') || formData.packSize.includes('Bottle') || formData.packSize.includes('Tube') || formData.packSize.includes('Canister'))) {
+      setFormData(prev => ({ ...prev, packSize: preset.packDescription }));
     }
   };
 
@@ -340,16 +430,20 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
       reorderLevel: 50,
       maxStockLevel: 500,
     });
-    setBaseUnit(preset.baseUnit);
+    setPackagingMode('MULTI_TIER');
+    setPricingMethod('STRIP_FIRST');
+    setBaseUnit('Tablet');
     setCustomUnitMode(false);
-    setHasStrip(preset.hasStrip);
-    setStripMultiplier(preset.stripMultiplier);
-    setHasPack(preset.hasPack);
-    setPackMultiplier(preset.packMultiplier);
-    setPieceCost(18.00);
-    setPiecePrice(30.00);
+    setStripsPerBox(10);
+    setTabletsPerStrip(10);
+    setAllowSellBox(true);
+    setAllowSellStrip(true);
+    setAllowSellPiece(true);
+    setIsCustomPricing(false);
+    setHasStrip(true);
+    setHasPack(true);
     setBulkDiscountPercent(globalBulkDiscountPercent || 10);
-    predictFromPiecePrice(30.00, 18.00);
+    calculateFromStrip(18.00, 28.50, 10, 10, globalBulkDiscountPercent || 10);
     setShowAddModal(true);
   };
 
@@ -449,8 +543,8 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.brandName || !formData.genericName) {
-      toast.warning('Please fill out medication name and generic details.', 'Required Fields');
+    if (!formData.brandName) {
+      toast.warning('Please fill out the medication name.', 'Required Field');
       return;
     }
 
@@ -458,33 +552,54 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
     const catName = cat ? cat.name : 'General';
 
     const tiers: ProductPackagingTier[] = [];
-    if (hasPack) {
+    
+    if (packagingMode === 'MULTI_TIER') {
+      const totalMultiplier = stripsPerBox * tabletsPerStrip;
+      if (allowSellBox) {
+        tiers.push({
+          unitName: 'Box',
+          tierType: 'PACK',
+          multiplier: totalMultiplier,
+          sellingPrice: packPrice,
+          costPrice: packCost
+        });
+      }
+      if (allowSellStrip) {
+        tiers.push({
+          unitName: 'Strip',
+          tierType: 'STRIP',
+          multiplier: tabletsPerStrip,
+          sellingPrice: stripPrice,
+          costPrice: stripCost
+        });
+      }
+      // Base dispensing unit
       tiers.push({
-        unitName: 'Pack',
-        multiplier: packMultiplier,
-        sellingPrice: packPrice,
-        costPrice: packCost
+        unitName: baseUnit || 'Tablet',
+        tierType: 'PIECE',
+        multiplier: 1,
+        sellingPrice: piecePrice,
+        costPrice: pieceCost,
+        isBase: true
+      });
+    } else {
+      // Single unit (Bottle / Tube / Sachet / etc.)
+      tiers.push({
+        unitName: baseUnit || 'Bottle',
+        tierType: 'PIECE',
+        multiplier: 1,
+        sellingPrice: piecePrice,
+        costPrice: pieceCost,
+        isBase: true
       });
     }
-    if (hasStrip) {
-      tiers.push({
-        unitName: 'Strip',
-        multiplier: stripMultiplier,
-        sellingPrice: stripPrice,
-        costPrice: stripCost
-      });
-    }
-    tiers.push({
-      unitName: baseUnit,
-      multiplier: 1,
-      sellingPrice: piecePrice,
-      costPrice: pieceCost,
-      isBase: true
-    });
+
+    const finalGenericName = formData.genericName?.trim() || formData.brandName;
 
     if (editingProduct) {
       updateProduct(editingProduct.id, {
         ...formData,
+        genericName: finalGenericName,
         categoryName: catName,
         baseUnit,
         packagingTiers: tiers,
@@ -497,6 +612,7 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
     } else {
       addProduct({
         ...formData,
+        genericName: finalGenericName,
         categoryName: catName,
         baseUnit,
         packagingTiers: tiers,
@@ -536,25 +652,51 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
     setPieceCost(p.unitCost);
     setPiecePrice(p.sellingPrice);
     setBulkDiscountPercent(p.bulkDiscountPercent || 10);
+    setIsCustomPricing(false);
 
-    const packTier = p.packagingTiers?.find(t => t.unitName === 'Pack' || t.unitName === 'Box' || t.unitName === 'Bottle' || t.unitName === 'Tube');
+    const packTier = p.packagingTiers?.find(t => t.unitName === 'Pack' || t.unitName === 'Box');
     const stripTier = p.packagingTiers?.find(t => t.unitName === 'Strip' || t.unitName === 'Blister');
+    const baseTier = p.packagingTiers?.find(t => t.isBase || t.unitName === p.baseUnit) || p.packagingTiers?.[0];
 
-    if (packTier) {
-      setHasPack(true);
-      setPackMultiplier(packTier.multiplier);
-      setPackPrice(packTier.sellingPrice);
-      setPackCost(packTier.costPrice);
+    const hasMultiTiers = Boolean(stripTier || (packTier && packTier.multiplier > 1));
+
+    if (hasMultiTiers) {
+      setPackagingMode('MULTI_TIER');
+      setPricingMethod('STRIP_FIRST');
+      const tabs = stripTier?.multiplier || 10;
+      const totalTabs = packTier?.multiplier || (tabs * 10);
+      const strips = Math.max(1, Math.round(totalTabs / tabs));
+      setStripsPerBox(strips);
+      setTabletsPerStrip(tabs);
+      setStripMultiplier(tabs);
+      setPackMultiplier(totalTabs);
+
+      setAllowSellBox(Boolean(packTier));
+      setAllowSellStrip(Boolean(stripTier));
+      setAllowSellPiece(Boolean(baseTier));
+
+      const sCost = stripTier?.costPrice ?? (packTier ? packTier.costPrice / strips : p.unitCost * tabs);
+      const sPrice = stripTier?.sellingPrice ?? (packTier ? packTier.sellingPrice / strips : p.sellingPrice * tabs);
+      setStripCost(Math.round(sCost * 100) / 100);
+      setStripPrice(Math.round(sPrice * 100) / 100);
+
+      const bCost = packTier?.costPrice ?? (sCost * strips);
+      const bPrice = packTier?.sellingPrice ?? (sPrice * strips);
+      setPackCost(Math.round(bCost * 100) / 100);
+      setPackPrice(Math.round(bPrice * 100) / 100);
+
+      setPieceCost(baseTier?.costPrice ?? p.unitCost);
+      setPiecePrice(baseTier?.sellingPrice ?? p.sellingPrice);
+      setHasPack(Boolean(packTier));
+      setHasStrip(Boolean(stripTier));
     } else {
+      setPackagingMode('SINGLE_UNIT');
+      setAllowSellBox(false);
+      setAllowSellStrip(false);
+      setAllowSellPiece(true);
+      setPieceCost(p.unitCost);
+      setPiecePrice(p.sellingPrice);
       setHasPack(false);
-    }
-
-    if (stripTier) {
-      setHasStrip(true);
-      setStripMultiplier(stripTier.multiplier);
-      setStripPrice(stripTier.sellingPrice);
-      setStripCost(stripTier.costPrice);
-    } else {
       setHasStrip(false);
     }
 
@@ -980,8 +1122,8 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                            {prod.genericName}
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {prod.strength ? `${prod.strength} • ` : ''}{prod.dosageForm || 'Item'}
                           </div>
                         </td>
                         <td className="p-3">
@@ -1742,25 +1884,6 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
                   />
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-800 dark:text-slate-200">
-                      Active Generic Molecule (INN) <span className="text-rose-500">*</span>
-                    </label>
-                    <FieldGuideNotice label="Read about this & examples" variant="brand">
-                      <p className="font-semibold text-slate-700 dark:text-slate-300">Clinical chemical entity</p>
-                      <p>💡 <strong>Examples:</strong> <code className="font-mono text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1 rounded">Amoxicillin Trihydrate</code> or <code className="font-mono text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1 rounded">Paracetamol + Caffeine</code> (used for bio-equivalent substitution).</p>
-                    </FieldGuideNotice>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    value={formData.genericName}
-                    onChange={e => setFormData({ ...formData, genericName: e.target.value })}
-                    placeholder="e.g. Amoxicillin Trihydrate, Paracetamol + Caffeine..."
-                    className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-medium focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
@@ -1836,325 +1959,567 @@ export const CataloguePage: React.FC<CataloguePageProps> = ({ activeSubTab, onSe
               </div>
             </div>
 
-            {/* SECTION 2: PACKAGING TIERS & DEFAULT SHELF PRICING */}
+            {/* SECTION 2: PACKAGING SETUP & SHELF PRICING */}
             <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">
+              {/* Header & Packaging Mode Selector */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 pb-3">
                 <div className="flex items-center space-x-2">
-                  <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
                   <div>
-                    <h4 className="font-bold text-xs text-slate-900 dark:text-white">
-                      2. Packaging Tiers & Shelf Pricing ({currentCurrency.code})
+                    <h4 className="font-bold text-xs text-slate-900 dark:text-white flex items-center space-x-2">
+                      <span>2. Packaging Setup & Shelf Pricing</span>
+                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                        {currentCurrency.code}
+                      </span>
                     </h4>
                     <p className="text-[11px] text-slate-500">
-                      Configure how this medicine is packaged and set default wholesale costs and retail shelf prices.
+                      Configure packaging dimensions and wholesale costs. Prices automatically calculate across tiers.
                     </p>
                   </div>
                 </div>
 
-                {hasPack && packMultiplier > 1 && (
+                {/* Packaging Mode Switch */}
+                <div className="flex items-center bg-slate-200/80 dark:bg-slate-900/80 p-1 rounded-xl text-xs font-semibold self-start sm:self-auto">
                   <button
                     type="button"
                     onClick={() => {
-                      if (packMultiplier > 0) {
-                        const calculatedUnitCost = Number((packCost / packMultiplier).toFixed(2));
-                        const calculatedUnitPrice = Number(((packPrice / packMultiplier) * 1.25).toFixed(2));
-                        setPieceCost(calculatedUnitCost);
-                        setPiecePrice(calculatedUnitPrice);
-
-                        if (hasStrip && stripMultiplier > 0) {
-                          const stripsInBox = packMultiplier / stripMultiplier;
-                          const calculatedStripCost = Number((packCost / stripsInBox).toFixed(2));
-                          const calculatedStripPrice = Number(((packPrice / stripsInBox) * 1.15).toFixed(2));
-                          setStripCost(calculatedStripCost);
-                          setStripPrice(calculatedStripPrice);
-                        }
-                      }
+                      setPackagingMode('MULTI_TIER');
+                      setBaseUnit('Tablet');
+                      setAllowSellBox(true);
+                      setAllowSellStrip(true);
+                      setAllowSellPiece(true);
+                      setHasPack(true);
+                      setHasStrip(true);
+                      calculateFromStrip(stripCost, stripPrice, stripsPerBox, tabletsPerStrip);
                     }}
-                    className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/70 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 self-start sm:self-auto shadow-sm"
-                    title="Automatically calculate strip and loose piece prices from outer box price"
+                    className={`px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5 ${
+                      packagingMode === 'MULTI_TIER'
+                        ? 'bg-white dark:bg-slate-800 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>⚡ Auto-Fill Strips & Loose from Box</span>
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Box & Strips (Multi-Tier)</span>
                   </button>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPackagingMode('SINGLE_UNIT');
+                      const u = formData.dosageForm === 'Cream' || formData.dosageForm === 'Ointment' ? 'Tube' : 
+                                formData.dosageForm === 'Inhaler' ? 'Canister' : 
+                                formData.dosageForm === 'Injection' ? 'Ampoule' : 'Bottle';
+                      setBaseUnit(u);
+                      setAllowSellBox(false);
+                      setAllowSellStrip(false);
+                      setAllowSellPiece(true);
+                      setHasPack(false);
+                      setHasStrip(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5 ${
+                      packagingMode === 'SINGLE_UNIT'
+                        ? 'bg-white dark:bg-slate-800 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Package className="w-3.5 h-3.5" />
+                    <span>Single Unit (Bottle / Tube)</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Base Unit Selection Bar */}
-              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <label className="text-xs font-bold text-slate-800 dark:text-slate-100 block">
-                      Atomic Base Dispensing Unit <span className="text-rose-500">*</span>
-                    </label>
-                    <span className="text-[10px] text-slate-500">
-                      Smallest single clinical piece dispensed to patients (e.g. 1 Tablet, 1 Capsule, 1 Bottle, 1 mL)
-                    </span>
+              {/* ------------------------------------------------------------- */}
+              {/* FLOW A: SINGLE-UNIT PRODUCTS (Bottles, Tubes, Inhalers, Syrups) */}
+              {/* ------------------------------------------------------------- */}
+              {packagingMode === 'SINGLE_UNIT' ? (
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div>
+                      <label className="text-xs font-bold text-slate-800 dark:text-slate-100 block">
+                        Dispensary Unit Type <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="text-[10px] text-slate-500">
+                        The physical unit dispensed to the customer (e.g. 1 Bottle, 1 Tube, 1 Sachet)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      {customUnitMode ? (
+                        <div className="flex items-center space-x-1">
+                          <input
+                            type="text"
+                            value={baseUnit}
+                            onChange={e => setBaseUnit(e.target.value)}
+                            placeholder="e.g. Sachet, Vial..."
+                            className="px-2.5 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold text-xs text-brand-600 focus:ring-1 focus:ring-brand-500"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setCustomUnitMode(false)}
+                            className="p-1.5 text-slate-400 hover:text-slate-600"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-1.5">
+                          <select
+                            value={baseUnit}
+                            onChange={e => setBaseUnit(e.target.value)}
+                            className="px-3 py-1.5 border rounded-lg bg-slate-50 dark:bg-slate-800 font-bold text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500"
+                          >
+                            {['Bottle', 'Tube', 'Sachet', 'Ampoule', 'Vial', 'Canister', 'Piece', 'Device', 'Pack'].map(u => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setCustomUnitMode(true)}
+                            className="px-2 py-1.5 text-slate-500 hover:text-brand-600 border border-dashed rounded-lg text-xs font-medium"
+                          >
+                            Custom...
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex items-center space-x-2">
-                    {customUnitMode ? (
-                      <div className="flex items-center space-x-1">
+                  {/* 2-Field Pricing Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                        Wholesale Cost per {baseUnit} ({currentCurrency.symbol}) <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={pieceCost}
+                        onChange={e => setPieceCost(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-mono font-bold text-sm focus:ring-2 focus:ring-brand-500"
+                        placeholder="0.00"
+                      />
+                      <span className="text-[10px] text-slate-400">Supplier invoice buy price</span>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                        Retail Selling Price per {baseUnit} ({currentCurrency.symbol}) <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={piecePrice}
+                        onChange={e => setPiecePrice(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-emerald-300 dark:border-emerald-700 rounded-lg bg-white dark:bg-slate-800 font-mono font-extrabold text-sm text-emerald-700 dark:text-emerald-300 focus:ring-2 focus:ring-emerald-500"
+                        placeholder="0.00"
+                      />
+                      <span className="text-[10px] text-slate-400">Default POS dispensary counter price</span>
+                    </div>
+                  </div>
+
+                  {/* Profit & Margin Risk Indicator */}
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center space-x-3">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block uppercase tracking-wider">Unit Profit</span>
+                        <span className="font-extrabold text-emerald-600 dark:text-emerald-400 text-sm font-mono">
+                          {formatCurrency(profitAmount)}
+                        </span>
+                      </div>
+                      <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
+                      <div>
+                        <span className="text-[10px] text-slate-500 block uppercase tracking-wider">Profit Margin</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
+                          {marginPercent.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
+                      <div>
+                        <span className="text-[10px] text-slate-500 block uppercase tracking-wider">Cost Markup</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
+                          {markupPercent.toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${riskInfo.badge}`}>
+                      {riskInfo.label}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                /* ------------------------------------------------------------- */
+                /* FLOW B: MULTI-TIER PRODUCTS (Tablets & Capsules in Blister Boxes) */
+                /* ------------------------------------------------------------- */
+                <div className="space-y-4">
+                  {/* Step 1: Packaging Dimensions Card */}
+                  <div className="p-3.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold text-xs flex items-center justify-center">
+                          1
+                        </span>
+                        <span className="font-bold text-xs text-slate-900 dark:text-white">
+                          Box & Blister Packaging Dimensions
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2 text-xs">
+                        <span className="text-slate-500 text-[11px]">Base Unit:</span>
+                        <span className="font-bold text-brand-600 bg-brand-50 dark:bg-brand-950/60 px-2 py-0.5 rounded text-[11px]">
+                          1 {baseUnit}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                          How many Strips in 1 Box? <span className="text-rose-500">*</span>
+                        </label>
                         <input
-                          type="text"
-                          value={baseUnit}
-                          onChange={e => setBaseUnit(e.target.value)}
-                          placeholder="e.g. Nebule, Sachet..."
-                          className="px-2.5 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold text-xs text-brand-600 focus:ring-1 focus:ring-brand-500"
-                          autoFocus
+                          type="number"
+                          min="1"
+                          value={stripsPerBox}
+                          onChange={e => handleDimensionChange(parseInt(e.target.value) || 1, tabletsPerStrip)}
+                          className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-mono font-bold text-xs focus:ring-2 focus:ring-brand-500"
+                          placeholder="e.g. 10"
                         />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                          How many {baseUnit}s on each Strip? <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={tabletsPerStrip}
+                          onChange={e => handleDimensionChange(stripsPerBox, parseInt(e.target.value) || 1)}
+                          className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-mono font-bold text-xs focus:ring-2 focus:ring-brand-500"
+                          placeholder="e.g. 10"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-slate-100/70 dark:bg-slate-800/50 flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                      <span>📦 <strong>Calculated Capacity:</strong> 1 Box = {stripsPerBox} Strips = <strong>{stripsPerBox * tabletsPerStrip} {baseUnit}s</strong></span>
+                      <span className="text-slate-400">Automatic inventory conversion</span>
+                    </div>
+                  </div>
+
+                  {/* Step 2: Simplified Pricing Calculator */}
+                  <div className="p-3.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold text-xs flex items-center justify-center">
+                          2
+                        </span>
+                        <span className="font-bold text-xs text-slate-900 dark:text-white">
+                          Quick Price Entry
+                        </span>
+                      </div>
+
+                      {/* Pricing Entry Method Selector */}
+                      <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-[11px]">
                         <button
                           type="button"
-                          onClick={() => setCustomUnitMode(false)}
-                          className="p-1.5 text-slate-400 hover:text-slate-600"
-                          title="Revert to list"
+                          onClick={() => setPricingMethod('STRIP_FIRST')}
+                          className={`px-2.5 py-1 rounded-md transition font-semibold ${
+                            pricingMethod === 'STRIP_FIRST'
+                              ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-sm font-bold'
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
                         >
-                          <X className="w-3.5 h-3.5" />
+                          ⚡ Enter by Strip (Recommended)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPricingMethod('BOX_FIRST')}
+                          className={`px-2.5 py-1 rounded-md transition font-semibold ${
+                            pricingMethod === 'BOX_FIRST'
+                              ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-sm font-bold'
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          📦 Enter by Box
                         </button>
                       </div>
+                    </div>
+
+                    {pricingMethod === 'STRIP_FIRST' ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                            Cost per Strip ({currentCurrency.symbol}) <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={stripCost}
+                            onChange={e => calculateFromStrip(parseFloat(e.target.value) || 0, stripPrice)}
+                            className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-mono font-bold text-xs focus:ring-2 focus:ring-brand-500"
+                            placeholder="e.g. 18.00"
+                          />
+                          <span className="text-[10px] text-slate-400">Supplier cost for 1 strip of {tabletsPerStrip}</span>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                            Selling Price per Strip ({currentCurrency.symbol}) <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={stripPrice}
+                            onChange={e => calculateFromStrip(stripCost, parseFloat(e.target.value) || 0)}
+                            className="w-full px-3 py-2 border border-brand-300 dark:border-brand-700 rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-xs text-brand-700 dark:text-brand-300 focus:ring-2 focus:ring-brand-500"
+                            placeholder="e.g. 28.50"
+                          />
+                          <span className="text-[10px] text-slate-400">Dispensary shelf price for 1 strip</span>
+                        </div>
+                      </div>
                     ) : (
-                      <div className="flex items-center space-x-1.5">
-                        <select
-                          value={baseUnit}
-                          onChange={e => setBaseUnit(e.target.value)}
-                          className="px-3 py-1.5 border rounded-lg bg-slate-50 dark:bg-slate-800 font-bold text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500"
-                        >
-                          <optgroup label="Clinical Base Units">
-                            {unitTypes.filter(u => u.category === 'DISPENSING_BASE').map(u => (
-                              <option key={u.id} value={u.name}>{u.name}</option>
-                            ))}
-                          </optgroup>
-                          <optgroup label="Containers & Bottles">
-                            {unitTypes.filter(u => u.category !== 'DISPENSING_BASE').map(u => (
-                              <option key={u.id} value={u.name}>{u.name}</option>
-                            ))}
-                          </optgroup>
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => setCustomUnitMode(true)}
-                          className="px-2 py-1.5 text-slate-500 hover:text-brand-600 border border-dashed rounded-lg text-xs font-medium"
-                          title="Type a custom unit name"
-                        >
-                          Custom...
-                        </button>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                            Wholesale Cost per Box ({currentCurrency.symbol}) <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={packCost}
+                            onChange={e => calculateFromBox(parseFloat(e.target.value) || 0, packPrice)}
+                            className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800 font-mono font-bold text-xs focus:ring-2 focus:ring-brand-500"
+                            placeholder="e.g. 180.00"
+                          />
+                          <span className="text-[10px] text-slate-400">Invoice cost for 1 complete box</span>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                            Retail Selling Price per Box ({currentCurrency.symbol}) <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={packPrice}
+                            onChange={e => calculateFromBox(packCost, parseFloat(e.target.value) || 0)}
+                            className="w-full px-3 py-2 border border-brand-300 dark:border-brand-700 rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-xs text-brand-700 dark:text-brand-300 focus:ring-2 focus:ring-brand-500"
+                            placeholder="e.g. 270.00"
+                          />
+                          <span className="text-[10px] text-slate-400">Dispensary shelf price for full box</span>
+                        </div>
                       </div>
                     )}
                   </div>
-                </div>
 
-                {/* Dosage preset recommendation chips */}
-                {dosagePresets[formData.dosageForm]?.recommendedUnits && (
-                  <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px]">
-                    <span className="text-slate-400 font-medium">Suggestions for {formData.dosageForm}:</span>
-                    {dosagePresets[formData.dosageForm]?.recommendedUnits.map(u => (
+                  {/* Step 3: Shelf Packaging Tiers & POS Permissions Table */}
+                  <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                    <div className="px-3.5 py-2.5 bg-slate-50/70 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold text-xs flex items-center justify-center">
+                          3
+                        </span>
+                        <span className="font-bold text-xs text-slate-900 dark:text-white">
+                          Active Shelf Tiers & Point-of-Sale (POS) Options
+                        </span>
+                      </div>
+
                       <button
-                        key={u}
                         type="button"
-                        onClick={() => { setBaseUnit(u); setCustomUnitMode(false); }}
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${
-                          baseUnit === u && !customUnitMode 
-                            ? 'bg-brand-600 text-white shadow-sm' 
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                        onClick={() => setIsCustomPricing(!isCustomPricing)}
+                        className={`px-2 py-1 rounded text-[11px] font-semibold transition flex items-center space-x-1 ${
+                          isCustomPricing
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                            : 'bg-slate-200/70 hover:bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
                         }`}
                       >
-                        {baseUnit === u && !customUnitMode ? '✓ ' : ''}{u}
+                        <Sliders className="w-3 h-3" />
+                        <span>{isCustomPricing ? 'Lock Auto-Calculated' : 'Customize Tier Prices'}</span>
                       </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* 3 Packaging & Pricing Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs">
-                {/* 1. OUTER PACK / BOX TIER */}
-                <div className={`p-3.5 rounded-xl border transition space-y-2.5 ${
-                  hasPack 
-                    ? 'bg-white dark:bg-slate-900 border-purple-300 dark:border-purple-800 shadow-sm' 
-                    : 'bg-slate-100/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-60'
-                }`}>
-                  <div className="flex justify-between items-center">
-                    <label className="flex items-center space-x-2 font-bold cursor-pointer text-slate-900 dark:text-white">
-                      <input
-                        type="checkbox"
-                        checked={hasPack}
-                        onChange={e => setHasPack(e.target.checked)}
-                        className="rounded text-purple-600 focus:ring-purple-500"
-                      />
-                      <span>Outer Box / Pack</span>
-                    </label>
-                    <span className="text-[10px] bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-bold px-1.5 py-0.5 rounded">
-                      Wholesale Box
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                      Pack Size ({baseUnit}s per box)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      disabled={!hasPack}
-                      value={packMultiplier}
-                      onChange={e => setPackMultiplier(parseInt(e.target.value) || 1)}
-                      className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-purple-500"
-                      placeholder="e.g. 100"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                      Wholesale Cost per Box ({currentCurrency.symbol})
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      disabled={!hasPack}
-                      value={packCost}
-                      onChange={e => setPackCost(parseFloat(e.target.value) || 0)}
-                      className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-purple-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                      Retail Selling Price per Box ({currentCurrency.symbol})
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      disabled={!hasPack}
-                      value={packPrice}
-                      onChange={e => setPackPrice(parseFloat(e.target.value) || 0)}
-                      className="w-full p-2 border border-purple-300 dark:border-purple-700 rounded-lg bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 font-mono font-extrabold focus:ring-2 focus:ring-purple-500 text-sm"
-                    />
-                  </div>
-
-                  {hasPack && packPrice > packCost && (
-                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-                      <span>Profit: {formatCurrency(packPrice - packCost)}</span>
-                      <span>({(((packPrice - packCost) / packPrice) * 100).toFixed(1)}% margin)</span>
                     </div>
-                  )}
-                </div>
 
-                {/* 2. STRIP / BLISTER TIER */}
-                <div className={`p-3.5 rounded-xl border transition space-y-2.5 ${
-                  hasStrip 
-                    ? 'bg-white dark:bg-slate-900 border-indigo-300 dark:border-indigo-800 shadow-sm' 
-                    : 'bg-slate-100/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-60'
-                }`}>
-                  <div className="flex justify-between items-center">
-                    <label className="flex items-center space-x-2 font-bold cursor-pointer text-slate-900 dark:text-white">
-                      <input
-                        type="checkbox"
-                        checked={hasStrip}
-                        onChange={e => setHasStrip(e.target.checked)}
-                        className="rounded text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span>Strip / Blister</span>
-                    </label>
-                    <span className="text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 font-bold px-1.5 py-0.5 rounded">
-                      Blister Pack
-                    </span>
-                  </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-100/50 dark:bg-slate-800/40 text-[10px] font-bold uppercase text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                          <tr>
+                            <th className="p-2.5 text-center w-24">Sell at POS?</th>
+                            <th className="p-2.5">Tier Unit</th>
+                            <th className="p-2.5">Contains</th>
+                            <th className="p-2.5">Cost Price</th>
+                            <th className="p-2.5">Selling Price</th>
+                            <th className="p-2.5 text-right">Profit / Margin</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                          {/* 1. BOX TIER */}
+                          <tr className={allowSellBox ? 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30' : 'opacity-40 bg-slate-50/40'}>
+                            <td className="p-2.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={allowSellBox}
+                                onChange={e => setAllowSellBox(e.target.checked)}
+                                className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 cursor-pointer"
+                              />
+                            </td>
+                            <td className="p-2.5 font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
+                              <span>📦 Box</span>
+                              <span className="text-[10px] font-normal text-slate-400">({stripsPerBox} strips)</span>
+                            </td>
+                            <td className="p-2.5 text-slate-500">{stripsPerBox * tabletsPerStrip} {baseUnit}s</td>
+                            <td className="p-2.5 font-mono text-slate-600 dark:text-slate-300">
+                              {isCustomPricing ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={packCost}
+                                  onChange={e => setPackCost(parseFloat(e.target.value) || 0)}
+                                  className="w-20 px-1.5 py-0.5 border rounded bg-white dark:bg-slate-800 text-xs font-mono"
+                                />
+                              ) : (
+                                formatCurrency(packCost)
+                              )}
+                            </td>
+                            <td className="p-2.5 font-mono font-bold text-brand-600 dark:text-brand-400">
+                              {isCustomPricing ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={packPrice}
+                                  onChange={e => setPackPrice(parseFloat(e.target.value) || 0)}
+                                  className="w-20 px-1.5 py-0.5 border border-brand-300 rounded bg-white dark:bg-slate-800 text-xs font-mono font-bold"
+                                />
+                              ) : (
+                                formatCurrency(packPrice)
+                              )}
+                            </td>
+                            <td className="p-2.5 text-right font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                              +{formatCurrency(packPrice - packCost)}
+                              <span className="text-[10px] text-slate-400 ml-1">
+                                ({packPrice > 0 ? (((packPrice - packCost) / packPrice) * 100).toFixed(1) : 0}%)
+                              </span>
+                            </td>
+                          </tr>
 
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                      Strip Size ({baseUnit}s per strip)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      disabled={!hasStrip}
-                      value={stripMultiplier}
-                      onChange={e => setStripMultiplier(parseInt(e.target.value) || 1)}
-                      className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-indigo-500"
-                      placeholder="e.g. 10"
-                    />
-                  </div>
+                          {/* 2. STRIP TIER */}
+                          <tr className={allowSellStrip ? 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30' : 'opacity-40 bg-slate-50/40'}>
+                            <td className="p-2.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={allowSellStrip}
+                                onChange={e => setAllowSellStrip(e.target.checked)}
+                                className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 cursor-pointer"
+                              />
+                            </td>
+                            <td className="p-2.5 font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
+                              <span>💊 Strip</span>
+                              <span className="text-[10px] font-normal text-slate-400">({tabletsPerStrip} {baseUnit}s)</span>
+                            </td>
+                            <td className="p-2.5 text-slate-500">{tabletsPerStrip} {baseUnit}s</td>
+                            <td className="p-2.5 font-mono text-slate-600 dark:text-slate-300">
+                              {isCustomPricing ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={stripCost}
+                                  onChange={e => setStripCost(parseFloat(e.target.value) || 0)}
+                                  className="w-20 px-1.5 py-0.5 border rounded bg-white dark:bg-slate-800 text-xs font-mono"
+                                />
+                              ) : (
+                                formatCurrency(stripCost)
+                              )}
+                            </td>
+                            <td className="p-2.5 font-mono font-bold text-brand-600 dark:text-brand-400">
+                              {isCustomPricing ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={stripPrice}
+                                  onChange={e => setStripPrice(parseFloat(e.target.value) || 0)}
+                                  className="w-20 px-1.5 py-0.5 border border-brand-300 rounded bg-white dark:bg-slate-800 text-xs font-mono font-bold"
+                                />
+                              ) : (
+                                formatCurrency(stripPrice)
+                              )}
+                            </td>
+                            <td className="p-2.5 text-right font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                              +{formatCurrency(stripPrice - stripCost)}
+                              <span className="text-[10px] text-slate-400 ml-1">
+                                ({stripPrice > 0 ? (((stripPrice - stripCost) / stripPrice) * 100).toFixed(1) : 0}%)
+                              </span>
+                            </td>
+                          </tr>
 
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                      Cost per Strip ({currentCurrency.symbol})
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      disabled={!hasStrip}
-                      value={stripCost}
-                      onChange={e => setStripCost(parseFloat(e.target.value) || 0)}
-                      className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                      Retail Selling Price per Strip ({currentCurrency.symbol})
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      disabled={!hasStrip}
-                      value={stripPrice}
-                      onChange={e => setStripPrice(parseFloat(e.target.value) || 0)}
-                      className="w-full p-2 border border-indigo-300 dark:border-indigo-700 rounded-lg bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 font-mono font-extrabold focus:ring-2 focus:ring-indigo-500 text-sm"
-                    />
-                  </div>
-
-                  {hasStrip && stripPrice > stripCost && (
-                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-                      <span>Profit: {formatCurrency(stripPrice - stripCost)}</span>
-                      <span>({(((stripPrice - stripCost) / stripPrice) * 100).toFixed(1)}% margin)</span>
+                          {/* 3. LOOSE PIECE TIER */}
+                          <tr className={allowSellPiece ? 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30' : 'opacity-40 bg-slate-50/40'}>
+                            <td className="p-2.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={allowSellPiece}
+                                onChange={e => setAllowSellPiece(e.target.checked)}
+                                className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 cursor-pointer"
+                              />
+                            </td>
+                            <td className="p-2.5 font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
+                              <span>⚪ Loose {baseUnit}</span>
+                              <span className="text-[10px] font-normal text-slate-400">(Single Piece)</span>
+                            </td>
+                            <td className="p-2.5 text-slate-500">1 {baseUnit}</td>
+                            <td className="p-2.5 font-mono text-slate-600 dark:text-slate-300">
+                              {isCustomPricing ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={pieceCost}
+                                  onChange={e => setPieceCost(parseFloat(e.target.value) || 0)}
+                                  className="w-20 px-1.5 py-0.5 border rounded bg-white dark:bg-slate-800 text-xs font-mono"
+                                />
+                              ) : (
+                                formatCurrency(pieceCost)
+                              )}
+                            </td>
+                            <td className="p-2.5 font-mono font-bold text-brand-600 dark:text-brand-400">
+                              {isCustomPricing ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={piecePrice}
+                                  onChange={e => setPiecePrice(parseFloat(e.target.value) || 0)}
+                                  className="w-20 px-1.5 py-0.5 border border-brand-300 rounded bg-white dark:bg-slate-800 text-xs font-mono font-bold"
+                                />
+                              ) : (
+                                formatCurrency(piecePrice)
+                              )}
+                            </td>
+                            <td className="p-2.5 text-right font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                              +{formatCurrency(piecePrice - pieceCost)}
+                              <span className="text-[10px] text-slate-400 ml-1">
+                                ({piecePrice > 0 ? (((piecePrice - pieceCost) / piecePrice) * 100).toFixed(1) : 0}%)
+                              </span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
-                  )}
-                </div>
 
-                {/* 3. BASE / SINGLE UNIT TIER */}
-                <div className="p-3.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-white dark:bg-slate-900 shadow-sm space-y-2.5">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-900 dark:text-white">
-                      Single {baseUnit} (Loose)
-                    </span>
-                    <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded">
-                      1 {baseUnit}
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                      Unit Cost per {baseUnit} ({currentCurrency.symbol})
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={pieceCost}
-                      onChange={e => setPieceCost(parseFloat(e.target.value) || 0)}
-                      className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                      Retail Selling Price per {baseUnit} ({currentCurrency.symbol})
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={piecePrice}
-                      onChange={e => setPiecePrice(parseFloat(e.target.value) || 0)}
-                      className="w-full p-2 border border-emerald-300 dark:border-emerald-700 rounded-lg bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 font-mono font-extrabold focus:ring-2 focus:ring-emerald-500 text-sm"
-                    />
-                  </div>
-
-                  {piecePrice > pieceCost && (
-                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-                      <span>Profit: {formatCurrency(piecePrice - pieceCost)}</span>
-                      <span>({(((piecePrice - pieceCost) / piecePrice) * 100).toFixed(1)}% margin)</span>
+                    <div className="p-2.5 bg-slate-50/70 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                      <span>💡 <strong>POS Display:</strong> Only checked tiers will show as quick buttons on the Cashier POS screen.</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${riskInfo.badge}`}>
+                        {riskInfo.label}
+                      </span>
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* SECTION 3: INVENTORY THRESHOLDS & CLINICAL CONTROLS */}

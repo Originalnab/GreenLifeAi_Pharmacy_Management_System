@@ -47,10 +47,25 @@ class GoodsReceiptLineSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 class GoodsReceiptNoteSerializer(serializers.ModelSerializer):
-    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
-    received_by_name = serializers.CharField(source='received_by.name', read_only=True)
-    storage_location_name = serializers.CharField(source='storage_location.name', read_only=True)
+    supplier_name = serializers.SerializerMethodField()
+    received_by_name = serializers.SerializerMethodField()
+    storage_location_name = serializers.SerializerMethodField()
     lines = GoodsReceiptLineSerializer(many=True, read_only=True)
+
+    def get_supplier_name(self, obj):
+        if obj.supplier and hasattr(obj.supplier, 'name'):
+            return obj.supplier.name
+        return 'Direct Stock Intake'
+
+    def get_received_by_name(self, obj):
+        if obj.received_by and hasattr(obj.received_by, 'name'):
+            return obj.received_by.name
+        return 'Administrator'
+
+    def get_storage_location_name(self, obj):
+        if obj.storage_location and hasattr(obj.storage_location, 'name'):
+            return obj.storage_location.name
+        return 'Main Dispensary Shelf'
 
     class Meta:
         model = GoodsReceiptNote
@@ -61,3 +76,4 @@ class GoodsReceiptNoteSerializer(serializers.ModelSerializer):
             'storage_location_name', 'lines', 'received_at'
         ]
         read_only_fields = ['id', 'received_at']
+

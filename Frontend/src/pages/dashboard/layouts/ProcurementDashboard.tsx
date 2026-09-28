@@ -76,7 +76,7 @@ export const ProcurementDashboard: React.FC<ProcurementDashboardProps> = ({ onNa
                 <div key={p.id} className="px-4 py-3.5 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{p.brandName}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{p.genericName} · Reorder at {p.reorderLevel} units</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{p.strength ? `${p.strength} · ` : ''}Reorder at {p.reorderLevel} units</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className={`text-xs font-extrabold ${p.availableQuantity === 0 ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>

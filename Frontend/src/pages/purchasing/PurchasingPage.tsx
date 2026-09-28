@@ -4,15 +4,17 @@ import {
   PackageCheck, FileText, X, AlertTriangle, Sparkles, FileSpreadsheet, CheckCheck,
   Info, BookOpen, HelpCircle, ShieldCheck,
   Trash2, Calendar, TrendingUp, RefreshCw, Boxes,
-  Eye, Edit3, Barcode, Warehouse, MapPin, Layers, Package, Save
+  Eye, Edit3, Barcode, Warehouse, MapPin, Layers, Package, Save,
+  Printer, Download
 } from 'lucide-react';
 import { usePharmacy } from '../../context/PharmacyContext';
-import { PurchaseOrder, Batch, BatchStatus } from '../../types';
+import { PurchaseOrder, Batch, BatchStatus, ProductPackagingTier } from '../../types';
 import { FloatingBulkActionBar } from '../../components/common/FloatingBulkActionBar';
 import { WorkflowGuideNotice } from '../../components/common/WorkflowGuideNotice';
 import { FieldGuideNotice } from '../../components/common/FieldGuideNotice';
 import { Pagination } from '../../components/common/Pagination';
 import { usePagination } from '../../hooks/usePagination';
+import { downloadCsv, printOrSavePdf } from '../../utils/exportUtils';
 
 interface PurchaseBatchGroup {
   batchNumber: string;
@@ -48,7 +50,7 @@ interface EditableBatchItem {
 export const PurchasingPage: React.FC = () => {
   const { 
     purchaseOrders, suppliers, products, receiveStock, 
-    addPurchaseOrder, formatCurrency, currentCurrency,
+    addPurchaseOrder, updatePurchaseOrder, addProduct, categories, formatCurrency, currentCurrency,
     batches, updateBatch, deleteBatch, updateBatchGroup, deleteBatchGroup, storageLocations,
     systemProfile, currentUser, toast, confirmDialog
   } = usePharmacy();
@@ -56,6 +58,8 @@ export const PurchasingPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'orders' | 'batches'>('orders');
   const [showPOModal, setShowPOModal] = useState(false);
   const [showGRNModal, setShowGRNModal] = useState(false);
+  const [purchaseModalMode, setPurchaseModalMode] = useState<'create' | 'view' | 'edit'>('create');
+  const [selectedPOForModal, setSelectedPOForModal] = useState<PurchaseOrder | null>(null);
   const [updateMasterSellingPrice, setUpdateMasterSellingPrice] = useState(true);
 
   // Filters & selection
@@ -87,17 +91,17 @@ export const PurchasingPage: React.FC = () => {
     unitCost: number;
   }
 
-  // Multi-product GRN Item
+  // Multi-product Stock Receiving Item
   interface GRNLineItem {
     id: string;
     productId: string;
+    isNewProduct?: boolean;
+    newBrandName?: string;
+    newBaseUnit?: string;
+    unitType?: string;
     batchNumber: string;
     mfgDate: string;
     expDate: string;
-    intakeUnitType: 'PACK' | 'BASE';
-    packQty: number;
-    packCost: number;
-    packSellingPrice: number;
     qty: number;
     unitCost: number;
     sellingPrice: number;
@@ -228,9 +232,9 @@ export const PurchasingPage: React.FC = () => {
     }));
   };
 
-  // GRN State
+  // Stock Receiving State
   const [grnSupplierId, setGrnSupplierId] = useState(suppliers[0]?.id || '');
-  const [grnNumber, setGrnNumber] = useState(`GRN-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [grnNumber, setGrnNumber] = useState(`RCV-2026-${Math.floor(1000 + Math.random() * 9000)}`);
   const [grnBatchNumber, setGrnBatchNumber] = useState(`BAT-2026-${Math.floor(100 + Math.random() * 900)}`);
   const [grnDeliveryNote, setGrnDeliveryNote] = useState('WAYBILL-2026-9814');
   const [grnBayLocation, setGrnBayLocation] = useState(activeShopLocation);
@@ -476,64 +480,140 @@ export const PurchasingPage: React.FC = () => {
     }
   };
 
-  // Open GRN modal with prefilled lines if empty
+  // Open Stock Receiving modal in fresh CREATE mode
   const handleOpenGRNModal = () => {
-    setGrnNumber(`GRN-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+    setPurchaseModalMode('create');
+    setSelectedPOForModal(null);
+    setGrnNumber(`RCV-2026-${Math.floor(1000 + Math.random() * 9000)}`);
     const unifiedBatch = generateAutoGRNBatch('BAT');
     setGrnBatchNumber(unifiedBatch);
 
-    // Always set Receiving Bay / Storage Location by default to the active shop name (Shop / Active Branch Location Name * Live on Receipts, Invoices & TopBar)
+    // Always set Receiving Bay / Storage Location by default to the active shop name
     setGrnBayLocation(activeShopLocation);
-    if (products.length > 0) {
-      const today = new Date();
-      const mfg = new Date(today.getFullYear(), today.getMonth() - 2, 1).toISOString().slice(0, 10);
-      const exp = new Date(today.getFullYear() + 2, today.getMonth() + 4, 28).toISOString().slice(0, 10);
-      const p1 = products[0];
-      const p2 = products[1] || products[0];
+    const today = new Date();
+    const mfg = new Date(today.getFullYear(), today.getMonth() - 2, 1).toISOString().slice(0, 10);
+    const exp = new Date(today.getFullYear() + 2, today.getMonth() + 4, 28).toISOString().slice(0, 10);
 
-      const p1Pack = p1.packagingTiers?.find(t => t.tierType === 'PACK');
-      const p1Mult = p1Pack?.multiplier || 10;
-      const p1HasPack = !!p1Pack;
-      const p1PackCost = p1Pack?.costPrice || Number(((p1.unitCost || 18.00) * p1Mult).toFixed(2));
-      const p1PackSelling = p1Pack?.sellingPrice || Number(((p1.sellingPrice || 30.00) * p1Mult).toFixed(2));
+    if (grnItems.length === 0) {
+      if (products.length > 0) {
+        const p1 = products[0];
+        const p2 = products[1] || products[0];
 
-      const p2Pack = p2.packagingTiers?.find(t => t.tierType === 'PACK');
-      const p2Mult = p2Pack?.multiplier || 10;
-      const p2HasPack = !!p2Pack;
-      const p2PackCost = p2Pack?.costPrice || Number(((p2.unitCost || 25.00) * p2Mult).toFixed(2));
-      const p2PackSelling = p2Pack?.sellingPrice || Number(((p2.sellingPrice || 40.00) * p2Mult).toFixed(2));
-
-      setGrnItems([
-        {
+        setGrnItems([
+          {
+            id: 'grn_item_1',
+            productId: p1.id,
+            unitType: p1.baseUnit || 'Box',
+            batchNumber: unifiedBatch,
+            mfgDate: mfg,
+            expDate: exp,
+            qty: 100,
+            unitCost: p1.unitCost || 18.00,
+            sellingPrice: p1.sellingPrice || 30.00
+          },
+          ...(products.length > 1 ? [{
+            id: 'grn_item_2',
+            productId: p2.id,
+            unitType: p2.baseUnit || 'Box',
+            batchNumber: unifiedBatch,
+            mfgDate: mfg,
+            expDate: exp,
+            qty: 50,
+            unitCost: p2.unitCost || 25.00,
+            sellingPrice: p2.sellingPrice || 40.00
+          }] : [])
+        ]);
+      } else {
+        setGrnItems([{
           id: 'grn_item_1',
-          productId: p1.id,
+          productId: '',
+          isNewProduct: true,
+          newBrandName: '',
+          newBaseUnit: 'Tablet',
+          unitType: 'Tablet',
           batchNumber: unifiedBatch,
           mfgDate: mfg,
           expDate: exp,
-          intakeUnitType: (p1HasPack ? 'PACK' : 'BASE') as 'PACK' | 'BASE',
-          packQty: p1HasPack ? 10 : 1,
-          packCost: p1PackCost,
-          packSellingPrice: p1PackSelling,
-          qty: p1HasPack ? 10 * p1Mult : 100,
-          unitCost: p1.unitCost || 18.00,
-          sellingPrice: p1.sellingPrice || 30.00
-        },
-        ...(products.length > 1 ? [{
-          id: 'grn_item_2',
-          productId: p2.id,
-          batchNumber: unifiedBatch,
-          mfgDate: mfg,
-          expDate: exp,
-          intakeUnitType: (p2HasPack ? 'PACK' : 'BASE') as 'PACK' | 'BASE',
-          packQty: p2HasPack ? 5 : 1,
-          packCost: p2PackCost,
-          packSellingPrice: p2PackSelling,
-          qty: p2HasPack ? 5 * p2Mult : 50,
-          unitCost: p2.unitCost || 25.00,
-          sellingPrice: p2.sellingPrice || 40.00
-        }] : [])
-      ]);
+          qty: 10,
+          unitCost: 15.00,
+          sellingPrice: 25.00
+        }]);
+      }
     }
+    setShowGRNModal(true);
+  };
+
+  const loadPOIntoModal = (po: PurchaseOrder) => {
+    setGrnSupplierId(po.supplierId || suppliers[0]?.id || '');
+    setGrnNumber(po.poNumber);
+
+    let waybill = 'WAYBILL-2026-9814';
+    if (po.notes && po.notes.includes('Waybill:')) {
+      const match = po.notes.match(/Waybill:\s*([^)]+)/);
+      if (match && match[1]) waybill = match[1].trim();
+    }
+    setGrnDeliveryNote(waybill);
+
+    const linkedBatches = batches.filter(b => b.grnNumber === po.poNumber);
+    const masterLot = linkedBatches[0]?.batchNumber || (po.poNumber.startsWith('GRN') ? po.poNumber.replace('GRN-', 'BAT-') : `BAT-${po.poNumber}`);
+    setGrnBatchNumber(masterLot);
+
+    if (linkedBatches[0]?.storageLocation) {
+      setGrnBayLocation(linkedBatches[0].storageLocation);
+    } else {
+      setGrnBayLocation(activeShopLocation);
+    }
+
+    const converted: GRNLineItem[] = (po.items || []).map((it, idx) => {
+      const prod = products.find(p => p.id === it.productId || p.brandName.toLowerCase() === it.productName.toLowerCase());
+      const batch = batches.find(b => (b.productId === it.productId || b.productName === it.productName) && b.grnNumber === po.poNumber);
+      const uCost = it.unitCost || batch?.unitCost || prod?.unitCost || 0;
+      const sPrice = batch?.sellingPrice || prod?.sellingPrice || Number((uCost * 1.35).toFixed(2));
+      const qty = it.receivedQty || it.orderedQty || batch?.quantityOnHand || 1;
+      const unit = prod?.baseUnit || prod?.dosageForm || 'Tablet';
+
+      return {
+        id: `po_item_${idx + 1}_${Date.now()}`,
+        productId: prod?.id || it.productId || `prod_${idx}`,
+        isNewProduct: !prod,
+        newBrandName: it.productName,
+        newBaseUnit: unit,
+        unitType: unit,
+        batchNumber: batch?.batchNumber || masterLot,
+        mfgDate: batch?.manufacturingDate || batch?.mfgDate || '2026-01-15',
+        expDate: batch?.expiryDate || '2028-12-31',
+        qty,
+        unitCost: uCost,
+        sellingPrice: sPrice
+      };
+    });
+
+    setGrnItems(converted.length > 0 ? converted : [
+      {
+        id: 'item_1',
+        productId: products[0]?.id || '',
+        batchNumber: masterLot,
+        mfgDate: '2026-01-15',
+        expDate: '2028-12-31',
+        qty: 50,
+        unitCost: 10,
+        sellingPrice: 15,
+        unitType: 'Tablet'
+      }
+    ]);
+  };
+
+  const handleViewPurchase = (po: PurchaseOrder) => {
+    setPurchaseModalMode('view');
+    setSelectedPOForModal(po);
+    loadPOIntoModal(po);
+    setShowGRNModal(true);
+  };
+
+  const handleEditPurchase = (po: PurchaseOrder) => {
+    setPurchaseModalMode('edit');
+    setSelectedPOForModal(po);
+    loadPOIntoModal(po);
     setShowGRNModal(true);
   };
 
@@ -542,29 +622,21 @@ export const PurchasingPage: React.FC = () => {
     const mfg = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().slice(0, 10);
     const exp = new Date(today.getFullYear() + 2, today.getMonth() + 3, 28).toISOString().slice(0, 10);
     const prod = products[grnItems.length % products.length] || products[0];
-    
-    // Automatically assign the intake's unified batch ID to all newly added products
     const targetBatch = grnBatchNumber || (grnItems[0]?.batchNumber) || generateAutoGRNBatch('BAT');
-
-    const packTier = prod?.packagingTiers?.find(t => t.tierType === 'PACK');
-    const mult = packTier?.multiplier || 10;
-    const hasPack = !!packTier;
-    const packCost = packTier?.costPrice || Number(((prod?.unitCost || 18.00) * mult).toFixed(2));
-    const packSelling = packTier?.sellingPrice || Number(((prod?.sellingPrice || 30.00) * mult).toFixed(2));
 
     setGrnItems(prev => [
       ...prev,
       {
         id: `grn_item_${Date.now()}_${Math.random()}`,
         productId: prod?.id || '',
+        isNewProduct: !prod,
+        newBrandName: '',
+        newBaseUnit: prod?.baseUnit || 'Tablet',
+        unitType: prod?.baseUnit || 'Box',
         batchNumber: targetBatch,
         mfgDate: mfg,
         expDate: exp,
-        intakeUnitType: (hasPack ? 'PACK' : 'BASE') as 'PACK' | 'BASE',
-        packQty: hasPack ? 5 : 1,
-        packCost: packCost,
-        packSellingPrice: packSelling,
-        qty: hasPack ? 5 * mult : 50,
+        qty: 50,
         unitCost: prod?.unitCost || 18.00,
         sellingPrice: prod?.sellingPrice || 30.00
       }
@@ -579,66 +651,31 @@ export const PurchasingPage: React.FC = () => {
     setGrnItems(prev => prev.map(i => {
       if (i.id !== id) return i;
       if (field === 'productId') {
+        if (value === '__NEW_PRODUCT__') {
+          return {
+            ...i,
+            productId: '',
+            isNewProduct: true,
+            newBrandName: '',
+            newBaseUnit: 'Tablet',
+            unitType: 'Tablet',
+            qty: 10,
+            unitCost: 15.00,
+            sellingPrice: 25.00
+          };
+        }
         const prod = products.find(p => p.id === value);
-        const packTier = prod?.packagingTiers?.find(t => t.tierType === 'PACK');
-        const mult = packTier?.multiplier || 10;
-        const hasPack = !!packTier;
-        const packCost = packTier?.costPrice || Number(((prod?.unitCost || 18.00) * mult).toFixed(2));
-        const packSelling = packTier?.sellingPrice || Number(((prod?.sellingPrice || 30.00) * mult).toFixed(2));
         return {
           ...i,
           productId: value,
-          intakeUnitType: (hasPack ? 'PACK' : 'BASE') as 'PACK' | 'BASE',
-          packQty: hasPack ? 5 : 1,
-          packCost: packCost,
-          packSellingPrice: packSelling,
-          qty: hasPack ? 5 * mult : 50,
+          isNewProduct: false,
+          newBrandName: undefined,
+          newBaseUnit: prod?.baseUnit || 'Tablet',
+          unitType: prod?.baseUnit || 'Box',
+          qty: i.qty || 50,
           unitCost: prod ? prod.unitCost : i.unitCost,
           sellingPrice: prod ? prod.sellingPrice : i.sellingPrice
         };
-      }
-      if (field === 'intakeUnitType') {
-        const prod = products.find(p => p.id === i.productId);
-        const packTier = prod?.packagingTiers?.find(t => t.tierType === 'PACK');
-        const mult = packTier?.multiplier || 10;
-        if (value === 'PACK') {
-          const pCost = i.packCost || Number((i.unitCost * mult).toFixed(2));
-          const pSell = i.packSellingPrice || Number((i.sellingPrice * mult).toFixed(2));
-          const pQty = i.packQty > 0 ? i.packQty : Math.max(1, Math.round(i.qty / mult));
-          return {
-            ...i,
-            intakeUnitType: 'PACK',
-            packQty: pQty,
-            packCost: pCost,
-            packSellingPrice: pSell,
-            qty: pQty * mult,
-            unitCost: mult > 0 ? Number((pCost / mult).toFixed(2)) : i.unitCost,
-            sellingPrice: mult > 0 ? Number((pSell / mult).toFixed(2)) : i.sellingPrice
-          };
-        } else {
-          return {
-            ...i,
-            intakeUnitType: 'BASE'
-          };
-        }
-      }
-      if (field === 'packQty') {
-        const num = Math.max(0, parseInt(value) || 0);
-        const prod = products.find(p => p.id === i.productId);
-        const mult = prod?.packagingTiers?.find(t => t.tierType === 'PACK')?.multiplier || 10;
-        return { ...i, packQty: num, qty: num * mult };
-      }
-      if (field === 'packCost') {
-        const cost = Math.max(0, parseFloat(value) || 0);
-        const prod = products.find(p => p.id === i.productId);
-        const mult = prod?.packagingTiers?.find(t => t.tierType === 'PACK')?.multiplier || 10;
-        return { ...i, packCost: cost, unitCost: mult > 0 ? Number((cost / mult).toFixed(2)) : cost };
-      }
-      if (field === 'packSellingPrice') {
-        const sell = Math.max(0, parseFloat(value) || 0);
-        const prod = products.find(p => p.id === i.productId);
-        const mult = prod?.packagingTiers?.find(t => t.tierType === 'PACK')?.multiplier || 10;
-        return { ...i, packSellingPrice: sell, sellingPrice: mult > 0 ? Number((sell / mult).toFixed(2)) : sell };
       }
       if (field === 'qty') {
         const num = Math.max(0, parseInt(value) || 0);
@@ -688,25 +725,213 @@ export const PurchasingPage: React.FC = () => {
     );
   };
 
-  const handleExportPOCSV = () => {
-    const targetPOs = purchaseOrders.filter(po => selectedPOIds.includes(po.id));
-    if (targetPOs.length === 0) return;
-    const headers = ['PO Number', 'Supplier', 'Created Date', 'Expected Date', 'Lines Count', 'Total Value', 'Approval', 'Status'];
+  // Export handlers for Purchases (Selected or Filtered)
+  const handleExportPurchasesCSV = (onlySelected: boolean = false) => {
+    const targetPOs = onlySelected && selectedPOIds.length > 0
+      ? purchaseOrders.filter(po => selectedPOIds.includes(po.id))
+      : filteredPOs;
+
+    if (targetPOs.length === 0) {
+      toast.warning('No purchase orders to export.', 'Export Empty');
+      return;
+    }
+
+    const headers = [
+      'PO / Voucher #', 
+      'Supplier Name', 
+      'Created Date', 
+      'Expected Date', 
+      'Items Count', 
+      `Total Amount (${currentCurrency.code})`, 
+      'Approval Status', 
+      'Fulfillment Status',
+      'Notes & Waybill'
+    ];
+
     const rows = targetPOs.map(po => [
-      `"${po.poNumber}"`,
-      `"${po.supplierName}"`,
-      `"${po.createdAt}"`,
-      `"${po.expectedDate}"`,
+      po.poNumber,
+      po.supplierName,
+      po.createdAt,
+      po.expectedDate,
       po.items.length,
-      po.totalAmount,
-      `"${po.approvedBy || 'Pending'}"`,
-      po.status
+      po.totalAmount.toFixed(2),
+      po.approvalStatus || 'Pending',
+      po.status,
+      po.notes || ''
     ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const link = document.createElement('a');
-    link.href = encodeURI(csvContent);
-    link.download = `purchase_orders_${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
+
+    downloadCsv(`purchases_ledger_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    toast.success(`Exported ${targetPOs.length} purchase records to CSV.`, 'CSV Downloaded');
+  };
+
+  const handleExportPurchasesPDF = (onlySelected: boolean = false) => {
+    const targetPOs = onlySelected && selectedPOIds.length > 0
+      ? purchaseOrders.filter(po => selectedPOIds.includes(po.id))
+      : filteredPOs;
+
+    if (targetPOs.length === 0) {
+      toast.warning('No purchase orders to export to PDF.', 'Export Empty');
+      return;
+    }
+
+    const totalValuation = targetPOs.reduce((acc, p) => acc + (p.totalAmount || 0), 0);
+    const completedCount = targetPOs.filter(p => p.status === 'COMPLETED').length;
+    const pendingCount = targetPOs.filter(p => p.status === 'SUBMITTED' || p.status === 'APPROVED' || p.status === 'PARTIALLY_RECEIVED').length;
+
+    printOrSavePdf({
+      title: 'PURCHASE ORDERS & STOCK INTAKE SUMMARY DOSSIER',
+      subtitle: 'Official Procurement Requisitions, Goods Receiving & Supplier Inward Ledger',
+      dateLabel: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      pharmacyProfile: systemProfile,
+      summaryCards: [
+        { label: 'Total Purchases', value: `${targetPOs.length} Orders` },
+        { label: 'Total Value', value: formatCurrency(totalValuation) },
+        { label: 'Completed / Intake', value: `${completedCount} Received` },
+        { label: 'Pending Delivery', value: `${pendingCount} Pending` },
+      ],
+      tableHeaders: ['PO / Voucher #', 'Supplier', 'Created Date', 'Expected Date', 'Lines', 'Total Value', 'Approval', 'Status'],
+      tableRows: targetPOs.map(po => [
+        po.poNumber,
+        po.supplierName,
+        po.createdAt,
+        po.expectedDate,
+        `${po.items.length} items`,
+        formatCurrency(po.totalAmount),
+        po.approvalStatus === 'APPROVED' ? 'Authorized' : 'Pending',
+        po.status
+      ]),
+      authorName: currentUser.name,
+      authorRole: currentUser.role
+    });
+
+    toast.info('Generating official Purchases PDF document...', 'PDF Export');
+  };
+
+  const handleDownloadSinglePOPDF = (po: PurchaseOrder) => {
+    const totalQty = po.items.reduce((s, it) => s + (it.receivedQty || it.orderedQty || 0), 0);
+    printOrSavePdf({
+      title: 'OFFICIAL PURCHASE ORDER & GOODS RECEIVING VOUCHER',
+      subtitle: 'Supplier Requisition, Delivery Verification & Inward Stock Ledger',
+      voucherNumber: po.poNumber,
+      pharmacyProfile: systemProfile,
+      metadata: [
+        { label: 'Wholesale Supplier', value: po.supplierName },
+        { label: 'Order Date', value: po.createdAt },
+        { label: 'Expected Date', value: po.expectedDate },
+        { label: 'Approval Status', value: po.approvalStatus || 'Pending' },
+        { label: 'Fulfillment Status', value: po.status },
+        { label: 'Waybill / Notes', value: po.notes || 'Standard Delivery' },
+      ],
+      summaryCards: [
+        { label: 'Total Order Value', value: formatCurrency(po.totalAmount) },
+        { label: 'Total Formulations', value: `${po.items.length} Products` },
+        { label: 'Total Volume', value: `${totalQty} Units` },
+      ],
+      tableHeaders: ['Product / Formulation', 'Ordered Qty', 'Received Qty', 'Unit Cost', 'Subtotal Cost'],
+      tableRows: po.items.map(it => [
+        it.productName,
+        it.orderedQty,
+        it.receivedQty ?? it.orderedQty,
+        formatCurrency(it.unitCost),
+        formatCurrency(it.totalCost || (it.orderedQty * it.unitCost))
+      ]),
+      authorName: currentUser.name,
+      authorRole: currentUser.role
+    });
+  };
+
+  const handleDownloadModalPOCSV = () => {
+    if (grnItems.length === 0) return;
+    const headers = [
+      '#', 
+      'Medicine Product', 
+      'Unit Type', 
+      'Batch / Lot #', 
+      'Mfg Date', 
+      'Expiry Date', 
+      'Qty', 
+      `Unit Cost (${currentCurrency.code})`, 
+      `Subtotal Cost (${currentCurrency.code})`, 
+      `Unit Sell (${currentCurrency.code})`, 
+      `Subtotal Retail (${currentCurrency.code})`, 
+      'Margin %'
+    ];
+    const rows = grnItems.map((item, idx) => {
+      const p = products.find(prod => prod.id === item.productId);
+      const name = item.isNewProduct ? (item.newBrandName || 'New Product') : (p?.brandName || 'Product');
+      const unit = item.unitType || (p?.baseUnit || 'Tablet');
+      const costSub = (item.qty || 0) * (item.unitCost || 0);
+      const retailSub = (item.qty || 0) * (item.sellingPrice || 0);
+      const margin = item.sellingPrice > 0 ? (((item.sellingPrice - item.unitCost) / item.sellingPrice) * 100).toFixed(1) + '%' : '0%';
+      return [
+        idx + 1,
+        name,
+        unit,
+        item.batchNumber,
+        item.mfgDate,
+        item.expDate,
+        item.qty,
+        item.unitCost.toFixed(2),
+        costSub.toFixed(2),
+        item.sellingPrice.toFixed(2),
+        retailSub.toFixed(2),
+        margin
+      ];
+    });
+    downloadCsv(`delivery_voucher_${grnNumber}.csv`, headers, rows);
+    toast.success(`Exported voucher ${grnNumber} to CSV.`, 'CSV Downloaded');
+  };
+
+  const handleDownloadModalPOPDF = () => {
+    if (grnItems.length === 0) return;
+    const selSup = suppliers.find(s => s.id === grnSupplierId);
+    const totalQty = grnItems.reduce((acc, i) => acc + (i.qty || 0), 0);
+    const totalCost = grnItems.reduce((acc, i) => acc + ((i.qty || 0) * (i.unitCost || 0)), 0);
+    const totalRetail = grnItems.reduce((acc, i) => acc + ((i.qty || 0) * (i.sellingPrice || 0)), 0);
+    const totalProfit = totalRetail - totalCost;
+    const margin = totalRetail > 0 ? (totalProfit / totalRetail) * 100 : 0;
+
+    printOrSavePdf({
+      title: 'OFFICIAL STOCK RECEIVING DELIVERY VOUCHER',
+      subtitle: 'Supplier Delivery Intake, FEFO Expiry Ledger & Commercial Margin Verification',
+      voucherNumber: grnNumber,
+      pharmacyProfile: systemProfile,
+      metadata: [
+        { label: 'Wholesale Supplier', value: selSup?.name || 'Wholesale Supplier' },
+        { label: 'Master Batch / Lot #', value: grnBatchNumber },
+        { label: 'Storage Bay', value: grnBayLocation },
+        { label: 'Waybill / Dispatch', value: grnDeliveryNote || 'Standard Delivery' },
+      ],
+      summaryCards: [
+        { label: 'Total Invoice Cost', value: formatCurrency(totalCost) },
+        { label: 'Total Retail Value', value: formatCurrency(totalRetail) },
+        { label: 'Projected Gross Profit', value: `+${formatCurrency(totalProfit)} (${margin.toFixed(1)}%)` },
+        { label: 'Delivered Volume', value: `${totalQty.toLocaleString()} Units` },
+      ],
+      tableHeaders: ['Product Formulation', 'Unit Type', 'Batch #', 'Expiry Date', 'Qty', 'Unit Cost', 'Subtotal Cost', 'Unit Sell', 'Subtotal Retail', 'Margin %'],
+      tableRows: grnItems.map(item => {
+        const p = products.find(prod => prod.id === item.productId);
+        const name = item.isNewProduct ? (item.newBrandName || 'New Product') : (p?.brandName || 'Product');
+        const unit = item.unitType || (p?.baseUnit || 'Tablet');
+        const costSub = (item.qty || 0) * (item.unitCost || 0);
+        const retailSub = (item.qty || 0) * (item.sellingPrice || 0);
+        const mgn = item.sellingPrice > 0 ? (((item.sellingPrice - item.unitCost) / item.sellingPrice) * 100).toFixed(1) + '%' : '0%';
+        return [
+          name,
+          unit,
+          item.batchNumber,
+          item.expDate,
+          item.qty,
+          formatCurrency(item.unitCost),
+          formatCurrency(costSub),
+          formatCurrency(item.sellingPrice),
+          formatCurrency(retailSub),
+          mgn
+        ];
+      }),
+      authorName: currentUser.name,
+      authorRole: currentUser.role
+    });
   };
 
   const handleBulkApprove = () => {
@@ -767,18 +992,138 @@ export const PurchasingPage: React.FC = () => {
 
   const handleCommitGRN = (e: React.FormEvent) => {
     e.preventDefault();
+    if (purchaseModalMode === 'view') {
+      setShowGRNModal(false);
+      return;
+    }
+
+    if (purchaseModalMode === 'edit') {
+      if (grnItems.length === 0) {
+        toast.warning('A purchase record must contain at least one product line.', 'Line Item Required');
+        return;
+      }
+      for (let i = 0; i < grnItems.length; i++) {
+        const item = grnItems[i];
+        if (item.isNewProduct && !item.newBrandName?.trim()) {
+          toast.warning(`Please enter a medicine name on row #${i + 1}.`, 'Product Name Required');
+          return;
+        }
+        if (!item.isNewProduct && !item.productId) {
+          toast.warning(`Please select a medicine formulation on row #${i + 1}.`, 'Formulation Required');
+          return;
+        }
+        if (!item.qty || item.qty <= 0) {
+          toast.warning(`Please enter a valid quantity on row #${i + 1}.`, 'Invalid Quantity');
+          return;
+        }
+      }
+
+      const selSup = suppliers.find(s => s.id === grnSupplierId);
+      const resolvedItems = grnItems.map((item, idx) => {
+        let finalProductId = item.productId;
+        let finalProductName = '';
+        let packagingTiers: ProductPackagingTier[] | undefined = undefined;
+
+        if (item.isNewProduct) {
+          const brandName = (item.newBrandName || '').trim();
+          const baseUnit = item.unitType || item.newBaseUnit || 'Tablet';
+          const tiers: ProductPackagingTier[] = [
+            {
+              unitName: baseUnit,
+              multiplier: 1,
+              isBase: true,
+              costPrice: item.unitCost,
+              sellingPrice: item.sellingPrice,
+              tierType: 'PIECE'
+            }
+          ];
+          const newProd = addProduct({
+            brandName,
+            genericName: brandName,
+            sku: `MED-${Date.now().toString().slice(-6)}-${idx + 1}`,
+            barcode: `890${Date.now().toString().slice(-8)}${idx}`,
+            categoryId: categories[0]?.id || 'cat_01',
+            categoryName: categories[0]?.name || 'General Medicines',
+            dosageForm: baseUnit,
+            strength: 'Standard',
+            packSize: '1',
+            manufacturer: selSup?.name || 'Standard Pharma',
+            baseUnit,
+            unitCost: item.unitCost,
+            sellingPrice: item.sellingPrice,
+            packagingTiers: tiers,
+            totalQuantity: 0,
+            availableQuantity: 0,
+            reorderLevel: 50,
+            maxStockLevel: 500,
+            isPrescriptionRequired: false,
+            requiresColdChain: false,
+            status: 'IN_STOCK'
+          });
+          finalProductId = newProd.id;
+          finalProductName = newProd.brandName;
+          packagingTiers = tiers;
+        } else {
+          const prod = products.find(p => p.id === item.productId);
+          finalProductName = prod ? prod.brandName : 'Product';
+          packagingTiers = updateMasterSellingPrice ? prod?.packagingTiers : undefined;
+        }
+
+        return {
+          productId: finalProductId,
+          productName: finalProductName,
+          orderedQty: item.qty,
+          receivedQty: item.qty,
+          unitCost: item.unitCost,
+          sellingPrice: item.sellingPrice,
+          batchNumber: item.batchNumber || grnBatchNumber,
+          expiryDate: item.expDate,
+          totalCost: (item.qty || 0) * (item.unitCost || 0),
+          packagingTiers,
+          updateMasterSellingPrice
+        };
+      });
+
+      const totalCost = resolvedItems.reduce((acc, it) => acc + it.totalCost, 0);
+
+      if (selectedPOForModal) {
+        updatePurchaseOrder(selectedPOForModal.id, {
+          supplierId: grnSupplierId,
+          supplierName: selSup?.name || selectedPOForModal.supplierName,
+          items: resolvedItems,
+          totalAmount: totalCost,
+          notes: `Waybill: ${grnDeliveryNote} (Batch: ${grnBatchNumber})`,
+          updateMasterSellingPrice
+        });
+        toast.success(`Purchase record ${selectedPOForModal.poNumber} successfully updated!`, 'Purchase Updated');
+      }
+      setShowGRNModal(false);
+      return;
+    }
+
     if (grnItems.length === 0) {
       toast.warning('Please add at least one delivered product line to receive.', 'Line Item Required');
       return;
     }
     for (let i = 0; i < grnItems.length; i++) {
       const item = grnItems[i];
-      if (!item.productId) {
-        toast.warning(`Please select a medicine formulation on row #${i + 1}.`, 'Formulation Required');
-        return;
+      if (item.isNewProduct) {
+        if (!item.newBrandName?.trim()) {
+          toast.warning(`Please enter a brand / trade name for the new medicine on row #${i + 1}.`, 'Product Name Required');
+          return;
+        }
+      } else {
+        if (!item.productId) {
+          toast.warning(`Please select a medicine formulation on row #${i + 1}.`, 'Formulation Required');
+          return;
+        }
       }
       if (!item.batchNumber.trim()) {
         toast.warning(`Please specify a manufacturer batch / lot # on row #${i + 1}.`, 'Batch Required');
+        return;
+      }
+      if (!item.expDate) {
+        toast.warning(`Please specify an expiry date on row #${i + 1}.`, 'Expiry Date Required');
         return;
       }
       if (!item.qty || item.qty <= 0) {
@@ -788,19 +1133,65 @@ export const PurchasingPage: React.FC = () => {
     }
 
     const selSup = suppliers.find(s => s.id === grnSupplierId);
-    receiveStock(grnNumber, grnItems.map(item => {
-      const prod = products.find(p => p.id === item.productId);
-      let packagingTiers = updateMasterSellingPrice ? prod?.packagingTiers : undefined;
-      if (updateMasterSellingPrice && item.intakeUnitType === 'PACK' && packagingTiers) {
-        packagingTiers = packagingTiers.map(t => {
-          if (t.tierType === 'PACK') {
-            return { ...t, costPrice: item.packCost, sellingPrice: item.packSellingPrice };
+
+    const resolvedItems = grnItems.map((item, idx) => {
+      let finalProductId = item.productId;
+      let finalProductName = '';
+      let packagingTiers: ProductPackagingTier[] | undefined = undefined;
+
+      if (item.isNewProduct) {
+        const brandName = (item.newBrandName || '').trim();
+        const genericName = brandName;
+        const baseUnit = item.unitType || item.newBaseUnit || 'Tablet';
+        const dosageForm = baseUnit;
+
+        const tiers: ProductPackagingTier[] = [
+          {
+            unitName: baseUnit,
+            multiplier: 1,
+            isBase: true,
+            costPrice: item.unitCost,
+            sellingPrice: item.sellingPrice,
+            tierType: 'PIECE'
           }
-          return t;
+        ];
+
+        const newProd = addProduct({
+          brandName,
+          genericName,
+          sku: `MED-${Date.now().toString().slice(-6)}-${idx + 1}`,
+          barcode: `890${Date.now().toString().slice(-8)}${idx}`,
+          categoryId: categories[0]?.id || 'cat_01',
+          categoryName: categories[0]?.name || 'General Medicines',
+          dosageForm,
+          strength: 'Standard',
+          packSize: '1',
+          manufacturer: selSup?.name || 'Standard Pharma',
+          baseUnit,
+          unitCost: item.unitCost,
+          sellingPrice: item.sellingPrice,
+          packagingTiers: tiers,
+          totalQuantity: 0,
+          availableQuantity: 0,
+          reorderLevel: 50,
+          maxStockLevel: 500,
+          isPrescriptionRequired: false,
+          requiresColdChain: false,
+          status: 'IN_STOCK'
         });
+
+        finalProductId = newProd.id;
+        finalProductName = newProd.brandName;
+        packagingTiers = tiers;
+      } else {
+        const prod = products.find(p => p.id === item.productId);
+        finalProductName = prod ? prod.brandName : 'Product';
+        packagingTiers = updateMasterSellingPrice ? prod?.packagingTiers : undefined;
       }
+
       return {
-        productId: item.productId,
+        productId: finalProductId,
+        productName: finalProductName,
         batchNumber: item.batchNumber,
         mfgDate: item.mfgDate,
         expDate: item.expDate,
@@ -810,14 +1201,16 @@ export const PurchasingPage: React.FC = () => {
         packagingTiers,
         updateMasterSellingPrice
       };
-    }), {
+    });
+
+    receiveStock(grnNumber, resolvedItems, {
       supplierId: grnSupplierId,
       supplierName: selSup?.name || 'Wholesale Supplier',
       storageLocation: grnBayLocation,
       deliveryNote: grnDeliveryNote
     });
 
-    toast.success(`Goods Receipt ${grnNumber} committed for ${grnItems.length} products! Physical batches and inventory balances updated.`, 'GRN Intake Recorded');
+    toast.success(`Stock intake ${grnNumber} committed for ${grnItems.length} products! Physical batches and inventory balances updated.`, 'Stock Delivery Recorded');
     setShowGRNModal(false);
   };
 
@@ -828,7 +1221,7 @@ export const PurchasingPage: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center space-x-2">
             <Truck className="w-5 h-5 text-brand-600" />
-            <span>Purchasing & Goods Receiving (GRN)</span>
+            <span>Purchasing & Stock Receiving</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Purchase Orders, supplier delivery verification, batch intake, and cost-margin risk validation.
@@ -848,7 +1241,7 @@ export const PurchasingPage: React.FC = () => {
               }`}
             >
               <Truck className="w-3.5 h-3.5" />
-              <span>Purchase Orders</span>
+              <span>Purchases & Orders</span>
               <span className="ml-1 px-1.5 py-0.2 bg-slate-200 dark:bg-slate-700 rounded-full text-[10px]">
                 {purchaseOrders.length}
               </span>
@@ -875,7 +1268,7 @@ export const PurchasingPage: React.FC = () => {
             className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center space-x-1.5 transition"
           >
             <PackageCheck className="w-4 h-4" />
-            <span>Receive Goods (GRN)</span>
+            <span>Receive Stock</span>
           </button>
           <button
             onClick={handleOpenPOModal}
@@ -928,7 +1321,7 @@ export const PurchasingPage: React.FC = () => {
               <div className="p-3 bg-white/90 dark:bg-slate-900/80 rounded-xl border border-teal-100 dark:border-teal-900/50 space-y-1">
                 <div className="flex items-center space-x-1.5">
                   <span className="w-5 h-5 rounded-full bg-teal-100 dark:bg-teal-900 text-teal-700 dark:text-teal-300 flex items-center justify-center font-bold text-[11px]">3</span>
-                  <span className="font-bold text-xs text-teal-900 dark:text-teal-300">Batch Intake (GRN)</span>
+                  <span className="font-bold text-xs text-teal-900 dark:text-teal-300">Batch Intake & Receiving</span>
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-400">
                   Log manufacturer <strong>Batch Number</strong>, <strong>Expiry Date</strong> for FEFO rotation, and assign storage bay to active branch shop.
@@ -966,7 +1359,7 @@ export const PurchasingPage: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={supplierFilter}
                 onChange={e => setSupplierFilter(e.target.value)}
@@ -984,12 +1377,34 @@ export const PurchasingPage: React.FC = () => {
                 className="py-1.5 px-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none"
               >
                 <option value="ALL">All Statuses</option>
+                <option value="COMPLETED">Completed / Received Deliveries</option>
+                <option value="SUBMITTED">Submitted Orders</option>
+                <option value="APPROVED">Approved Orders</option>
                 <option value="DRAFT">Draft</option>
-                <option value="SUBMITTED">Submitted</option>
-                <option value="APPROVED">Approved</option>
-                <option value="RECEIVED">Received</option>
                 <option value="CANCELLED">Cancelled</option>
               </select>
+
+              {/* Download CSV & PDF Action Buttons */}
+              <div className="flex items-center space-x-1.5 pl-1 sm:border-l border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => handleExportPurchasesCSV(false)}
+                  className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1 transition border border-slate-200 dark:border-slate-700 shadow-sm"
+                  title="Download CSV spreadsheet of purchase orders"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Download CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportPurchasesPDF(false)}
+                  className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1 transition border border-slate-200 dark:border-slate-700 shadow-sm"
+                  title="Print or Save PDF report of purchase orders"
+                >
+                  <Printer className="w-3.5 h-3.5 text-brand-600" />
+                  <span>Download PDF</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1014,7 +1429,7 @@ export const PurchasingPage: React.FC = () => {
                         <span className="font-mono text-[11px] text-slate-400">#</span>
                       </div>
                     </th>
-                    <th className="p-3">PO Number</th>
+                    <th className="p-3">Reference / Voucher</th>
                     <th className="p-3">Supplier</th>
                     <th className="p-3">Created Date</th>
                     <th className="p-3">Expected Date</th>
@@ -1022,12 +1437,13 @@ export const PurchasingPage: React.FC = () => {
                     <th className="p-3">Total Value</th>
                     <th className="p-3">Approval</th>
                     <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredPOs.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="p-8 text-center text-slate-400">
+                      <td colSpan={11} className="p-8 text-center text-slate-400">
                         No purchase orders found matching filters.
                       </td>
                     </tr>
@@ -1101,6 +1517,34 @@ export const PurchasingPage: React.FC = () => {
                               {po.status}
                             </span>
                           </td>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end space-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleViewPurchase(po)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-slate-800 transition-colors"
+                                title="View Purchase Record & Pricing"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleEditPurchase(po)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 transition-colors"
+                                title="Edit Purchase Record"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadSinglePOPDF(po)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors"
+                                title="Print or Download PO Voucher (PDF)"
+                              >
+                                <Printer className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })
@@ -1125,9 +1569,15 @@ export const PurchasingPage: React.FC = () => {
             onClearSelection={() => setSelectedPOIds([])}
             actions={[
               {
-                label: 'Export POs CSV',
+                label: 'Export CSV',
                 icon: FileSpreadsheet,
-                onClick: handleExportPOCSV,
+                onClick: handleExportPurchasesCSV,
+                variant: 'secondary'
+              },
+              {
+                label: 'Print / PDF',
+                icon: Printer,
+                onClick: handleExportPurchasesPDF,
                 variant: 'secondary'
               },
               {
@@ -1152,7 +1602,7 @@ export const PurchasingPage: React.FC = () => {
                   Manufacturer Batches & Lot Traceability Registry (FEFO Expiry Control)
                 </h3>
                 <p className="text-[11px] text-teal-800 dark:text-teal-300/80">
-                  Every Goods Received Note (GRN) intake creates physical lot entries. Batches are automatically decremented during dispensing based on First-Expired, First-Out (FEFO).
+                  Every stock intake and supplier delivery creates physical lot entries. Batches are automatically decremented during dispensing based on First-Expired, First-Out (FEFO).
                 </p>
               </div>
             </div>
@@ -1161,7 +1611,7 @@ export const PurchasingPage: React.FC = () => {
               className="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow whitespace-nowrap self-end sm:self-auto flex items-center space-x-1"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Receive New Batch (GRN)</span>
+              <span>Receive Stock Delivery</span>
             </button>
           </div>
 
@@ -1173,7 +1623,7 @@ export const PurchasingPage: React.FC = () => {
           >
             <div className="space-y-2 text-xs">
               <p>
-                <strong>Batch Intake &amp; Traceability:</strong> In GreenLife, when a supplier delivery arrives, the <em>Goods Received Note (GRN)</em> creates physical lot entries with auto-generated or supplier lot numbers, expiry dates, and intake storage bays.
+                <strong>Batch Intake &amp; Traceability:</strong> In GreenLife, when a supplier delivery arrives, the <em>Stock Intake Delivery Voucher</em> creates physical lot entries with auto-generated or supplier lot numbers, expiry dates, and intake storage bays.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1 text-[11px]">
                 <div className="p-2 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 space-y-1">
@@ -1234,7 +1684,7 @@ export const PurchasingPage: React.FC = () => {
                 id="batch-search-input"
                 value={batchSearch}
                 onChange={e => setBatchSearch(e.target.value)}
-                placeholder="Search batch #, product formulation, supplier, or GRN..."
+                placeholder="Search batch #, product formulation, supplier, or voucher #..."
                 className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-500"
               />
             </div>
@@ -1299,7 +1749,7 @@ export const PurchasingPage: React.FC = () => {
                               </span>
                             </div>
                             <div className="text-[10px] text-slate-400 mt-0.5 space-y-0.5">
-                              <div>GRN: <span className="font-mono text-slate-600 dark:text-slate-300">{bg.grnNumber}</span></div>
+                              <div>Voucher: <span className="font-mono text-slate-600 dark:text-slate-300">{bg.grnNumber}</span></div>
                               {bg.deliveryNote && <div>WB: <span className="font-mono text-slate-500">{bg.deliveryNote}</span></div>}
                               {bg.receivedDate && <div>Recv: <span>{bg.receivedDate}</span></div>}
                             </div>
@@ -1601,7 +2051,7 @@ export const PurchasingPage: React.FC = () => {
                             >
                               {products.map(p => (
                                 <option key={p.id} value={p.id}>
-                                  {p.brandName} ({p.genericName}) — {p.dosageForm}
+                                  {p.brandName} {p.strength ? `• ${p.strength}` : ''}
                                 </option>
                               ))}
                             </select>
@@ -1761,8 +2211,17 @@ export const PurchasingPage: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL 2: Goods Received Note (GRN Intake) (Wide Landscape Workbench) */}
-      {showGRNModal && (
+      {/* MODAL 2: Stock Receiving (Supplier Delivery Workbench) */}
+      {showGRNModal && (() => {
+        const intakeTotalQty = grnItems.reduce((acc, i) => acc + (i.qty || 0), 0);
+        const intakeTotalCost = grnItems.reduce((acc, i) => acc + ((i.qty || 0) * (i.unitCost || 0)), 0);
+        const intakeTotalRetail = grnItems.reduce((acc, i) => acc + ((i.qty || 0) * (i.sellingPrice || 0)), 0);
+        const intakeTotalProfit = intakeTotalRetail - intakeTotalCost;
+        const intakeMarginPercent = intakeTotalRetail > 0 ? (intakeTotalProfit / intakeTotalRetail) * 100 : 0;
+        const intakeAvgUnitCost = intakeTotalQty > 0 ? intakeTotalCost / intakeTotalQty : 0;
+        const intakeAvgUnitRetail = intakeTotalQty > 0 ? intakeTotalRetail / intakeTotalQty : 0;
+
+        return (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
           <form 
             onSubmit={handleCommitGRN} 
@@ -1772,20 +2231,61 @@ export const PurchasingPage: React.FC = () => {
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 flex-shrink-0">
               <div>
                 <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center space-x-2">
-                  <PackageCheck className="w-5 h-5 text-emerald-600" />
-                  <span>Receive Goods Note (GRN Intake) — Multi-Product Intake Workbench</span>
+                  {purchaseModalMode === 'view' ? (
+                    <>
+                      <Eye className="w-5 h-5 text-brand-600" />
+                      <span>View Purchase Record ({grnNumber})</span>
+                    </>
+                  ) : purchaseModalMode === 'edit' ? (
+                    <>
+                      <Edit3 className="w-5 h-5 text-emerald-600" />
+                      <span>Edit Purchase Record ({grnNumber})</span>
+                    </>
+                  ) : (
+                    <>
+                      <PackageCheck className="w-5 h-5 text-emerald-600" />
+                      <span>Receive Stock (Supplier Delivery Workbench)</span>
+                    </>
+                  )}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Log incoming delivery shipments, auto-generate batch lot codes, assign FEFO expiry dates, and audit unit profit margins.
+                  {purchaseModalMode === 'view'
+                    ? 'Review delivered medicine formulations, unit wholesale costs, selling prices, and audited profit margins.'
+                    : purchaseModalMode === 'edit'
+                    ? 'Update supplier voucher details, quantities, unit costs, selling prices, or line items.'
+                    : 'Record incoming supplier shipments, auto-generate batch lot codes, assign FEFO expiry dates, and audit unit & total profit margins.'}
                 </p>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setShowGRNModal(false)}
-                className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center space-x-2">
+                {purchaseModalMode === 'view' ? (
+                  <button
+                    type="button"
+                    onClick={() => setPurchaseModalMode('edit')}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1 shadow-sm transition"
+                    title="Switch to edit mode"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Edit Record</span>
+                  </button>
+                ) : purchaseModalMode === 'edit' ? (
+                  <button
+                    type="button"
+                    onClick={() => setPurchaseModalMode('view')}
+                    className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center space-x-1 transition"
+                    title="Switch to view mode"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>View Only</span>
+                  </button>
+                ) : null}
+                <button 
+                  type="button" 
+                  onClick={() => setShowGRNModal(false)}
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* In-Modal Guidance Banner */}
@@ -1796,12 +2296,18 @@ export const PurchasingPage: React.FC = () => {
                   <strong className="text-emerald-900 dark:text-emerald-300">FEFO Stock Rotation & Margins:</strong> Batch numbers are auto-generated for traceability. Live margins display <strong>Unit Cost (Valuation)</strong> vs <strong>Unit Selling (Retail)</strong> to protect dispensary profitability.
                 </div>
               </div>
-              <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-900 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 shadow-sm flex-shrink-0">
-                Multi-Product Intake Active
+              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border shadow-sm flex-shrink-0 ${
+                purchaseModalMode === 'view'
+                  ? 'text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800'
+                  : purchaseModalMode === 'edit'
+                  ? 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800'
+                  : 'text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-800'
+              }`}>
+                {purchaseModalMode === 'view' ? 'Read-Only Record View' : purchaseModalMode === 'edit' ? 'Editing Purchase Record' : 'Multi-Product Intake Active'}
               </span>
             </div>
 
-            {/* GRN Top Bar (Supplier, Audit Reference, Unified Batch, Receiving Bay, Delivery Note) */}
+            {/* Stock Receiving Top Bar (Supplier, Audit Reference, Unified Batch, Receiving Bay, Delivery Note) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 text-xs bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 flex-shrink-0">
               <div>
                 <label className="font-semibold block mb-1 text-slate-800 dark:text-slate-200">
@@ -1809,9 +2315,10 @@ export const PurchasingPage: React.FC = () => {
                 </label>
                 <select
                   id="grn-supplier-select"
+                  disabled={purchaseModalMode === 'view'}
                   value={grnSupplierId}
                   onChange={e => setGrnSupplierId(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 font-semibold focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs"
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 font-semibold focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
                 >
                   {suppliers.map(s => (
                     <option key={s.id} value={s.id}>
@@ -1825,24 +2332,27 @@ export const PurchasingPage: React.FC = () => {
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="font-semibold text-slate-800 dark:text-slate-200">
-                    GRN Audit Reference <span className="text-rose-500">*</span>
+                    Delivery Voucher # <span className="text-rose-500">*</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setGrnNumber(`GRN-2026-${Math.floor(1000 + Math.random() * 9000)}`)}
-                    className="text-[10px] text-emerald-600 hover:text-emerald-700 font-bold flex items-center space-x-0.5"
-                    title="Generate new GRN Reference"
-                  >
-                    <RefreshCw className="w-2.5 h-2.5" />
-                    <span>Auto-Gen</span>
-                  </button>
+                  {purchaseModalMode !== 'view' && (
+                    <button
+                      type="button"
+                      onClick={() => setGrnNumber(`RCV-2026-${Math.floor(1000 + Math.random() * 9000)}`)}
+                      className="text-[10px] text-emerald-600 hover:text-emerald-700 font-bold flex items-center space-x-0.5"
+                      title="Generate new Voucher Reference"
+                    >
+                      <RefreshCw className="w-2.5 h-2.5" />
+                      <span>Auto-Gen</span>
+                    </button>
+                  )}
                 </div>
                 <input
                   type="text"
                   required
+                  disabled={purchaseModalMode === 'view'}
                   value={grnNumber}
                   onChange={e => setGrnNumber(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-emerald-700 dark:text-emerald-400 focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs"
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-emerald-700 dark:text-emerald-400 focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
                 />
                 <span className="text-[10px] text-slate-400 mt-0.5 block">Internal receipt voucher ID</span>
               </div>
@@ -1854,24 +2364,27 @@ export const PurchasingPage: React.FC = () => {
                     <Barcode className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Batch / Lot # *</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => handleMasterBatchChange(generateAutoGRNBatch('BAT'))}
-                    className="text-[10px] text-emerald-700 dark:text-emerald-300 hover:underline font-bold flex items-center space-x-0.5"
-                    title="Generate new unified batch code for all products"
-                  >
-                    <RefreshCw className="w-2.5 h-2.5" />
-                    <span>Auto-Gen</span>
-                  </button>
+                  {purchaseModalMode !== 'view' && (
+                    <button
+                      type="button"
+                      onClick={() => handleMasterBatchChange(generateAutoGRNBatch('BAT'))}
+                      className="text-[10px] text-emerald-700 dark:text-emerald-300 hover:underline font-bold flex items-center space-x-0.5"
+                      title="Generate new unified batch code for all products"
+                    >
+                      <RefreshCw className="w-2.5 h-2.5" />
+                      <span>Auto-Gen</span>
+                    </button>
+                  )}
                 </div>
                 <input
                   type="text"
                   required
+                  disabled={purchaseModalMode === 'view'}
                   id="grn-unified-batch-input"
                   value={grnBatchNumber}
                   onChange={e => handleMasterBatchChange(e.target.value)}
                   placeholder="e.g. BAT-2026-981"
-                  className="w-full px-2.5 py-1.5 border rounded-lg bg-white dark:bg-slate-900 font-mono font-bold text-emerald-800 dark:text-emerald-200 focus:ring-2 focus:ring-emerald-500 border-emerald-300 dark:border-emerald-700 text-xs shadow-inner"
+                  className="w-full px-2.5 py-1.5 border rounded-lg bg-white dark:bg-slate-900 font-mono font-bold text-emerald-800 dark:text-emerald-200 focus:ring-2 focus:ring-emerald-500 border-emerald-300 dark:border-emerald-700 text-xs shadow-inner disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
                 />
                 <span className="text-[10px] text-emerald-700 dark:text-emerald-400 mt-0.5 block font-semibold">
                   Auto-assigned to all products
@@ -1884,9 +2397,10 @@ export const PurchasingPage: React.FC = () => {
                 </label>
                 <select
                   id="grn-bay-location-select"
+                  disabled={purchaseModalMode === 'view'}
                   value={grnBayLocation}
                   onChange={e => setGrnBayLocation(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 font-semibold focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs"
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 font-semibold focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
                 >
                   <option value={activeShopLocation}>🏪 {activeShopLocation} (Current Active Shop / Branch)</option>
                   {(storageLocations || [])
@@ -1911,10 +2425,11 @@ export const PurchasingPage: React.FC = () => {
                 </label>
                 <input
                   type="text"
+                  disabled={purchaseModalMode === 'view'}
                   value={grnDeliveryNote}
                   onChange={e => setGrnDeliveryNote(e.target.value)}
                   placeholder="e.g. WAYBILL-2026-9814"
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 font-medium focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs"
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 font-medium focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
                 />
                 <span className="text-[10px] text-slate-400 mt-0.5 block truncate" title="Driver's physical transport dispatch invoice for delivery cross-auditing">
                   Driver's dispatch invoice
@@ -1922,26 +2437,28 @@ export const PurchasingPage: React.FC = () => {
               </div>
             </div>
 
-            {/* GRN Products Table */}
+            {/* Products Table */}
             <div className="flex-1 overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700 rounded-xl">
               <div className="bg-slate-100 dark:bg-slate-800/90 px-3 py-2 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 flex-shrink-0">
                 <span className="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
                   <PackageCheck className="w-4 h-4 text-emerald-600" />
-                  <span>Received Inventory Lines ({grnItems.length} Products)</span>
+                  <span>{purchaseModalMode === 'view' ? 'Purchase Order Line Items' : 'Received Inventory Lines'} ({grnItems.length} Products)</span>
                 </span>
                 <div className="flex items-center space-x-2">
                   <span className="px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-sm">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Auto-Assigned Batch: <strong className="font-mono">{grnBatchNumber}</strong></span>
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleAddGRNItem}
-                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1 transition shadow-sm"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Another Product</span>
-                  </button>
+                  {purchaseModalMode !== 'view' && (
+                    <button
+                      type="button"
+                      onClick={handleAddGRNItem}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1 transition shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Another Product</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1950,243 +2467,255 @@ export const PurchasingPage: React.FC = () => {
                   <thead className="bg-slate-50 dark:bg-slate-800/60 sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700">
                     <tr className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
                       <th className="p-2 text-center w-8">#</th>
-                      <th className="p-2 min-w-[200px]">Medicine Name / Product <span className="text-rose-500">*</span></th>
-                      <th className="p-2 min-w-[150px]">Batch / Lot # <span className="text-rose-500">*</span></th>
-                      <th className="p-2 min-w-[130px] text-center">Intake Unit</th>
+                      <th className="p-2 min-w-[210px]">Medicine / Product <span className="text-rose-500">*</span></th>
+                      <th className="p-2 w-28 text-center">Unit Type <span className="text-rose-500">*</span></th>
+                      <th className="p-2 min-w-[125px]">Batch / Lot # <span className="text-rose-500">*</span></th>
                       <th className="p-2 w-28">Mfg Date</th>
                       <th className="p-2 w-32">Expiry Date <span className="text-rose-500">*</span></th>
-                      <th className="p-2 w-32 text-center">Received Qty <span className="text-rose-500">*</span></th>
-                      <th className="p-2 w-32 text-right">Cost Price ({currentCurrency.symbol}) <span className="text-rose-500">*</span></th>
-                      <th className="p-2 w-32 text-right">Selling Price ({currentCurrency.symbol}) <span className="text-rose-500">*</span></th>
-                      <th className="p-2 min-w-[160px] text-center">Profit Margin & Markup</th>
-                      <th className="p-2 w-28 text-right">Valuation</th>
-                      <th className="p-2 text-center w-12">Action</th>
+                      <th className="p-2 w-24 text-center">Qty <span className="text-rose-500">*</span></th>
+                      <th className="p-2 w-28 text-right">Unit Cost ({currentCurrency.symbol}) <span className="text-rose-500">*</span></th>
+                      <th className="p-2 w-32 text-right">Subtotal Cost ({currentCurrency.symbol})</th>
+                      <th className="p-2 w-28 text-right">Unit Sell ({currentCurrency.symbol}) <span className="text-rose-500">*</span></th>
+                      <th className="p-2 w-32 text-right">Subtotal Retail ({currentCurrency.symbol})</th>
+                      <th className="p-2 min-w-[140px] text-center">Profit & Margin</th>
+                      <th className="p-2 text-center w-10">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                     {grnItems.map((item, idx) => {
                       const matchedProduct = products.find(p => p.id === item.productId);
-                      const packTier = matchedProduct?.packagingTiers?.find(t => t.tierType === 'PACK');
-                      const packMultiplier = packTier?.multiplier || 10;
-                      const hasPack = !!packTier;
-                      const isPackMode = item.intakeUnitType === 'PACK';
-
-                      const profit = (item.sellingPrice || 0) - (item.unitCost || 0);
-                      const marginPercent = item.sellingPrice > 0 ? (profit / item.sellingPrice) * 100 : 0;
-                      const markupPercent = item.unitCost > 0 ? (profit / item.unitCost) * 100 : 0;
-                      const lineValuation = (item.qty || 0) * (item.unitCost || 0);
+                      const unitProfit = (item.sellingPrice || 0) - (item.unitCost || 0);
+                      const lineCostSubtotal = (item.qty || 0) * (item.unitCost || 0);
+                      const lineRetailSubtotal = (item.qty || 0) * (item.sellingPrice || 0);
+                      const lineProfit = lineRetailSubtotal - lineCostSubtotal;
+                      const marginPercent = item.sellingPrice > 0 ? (unitProfit / item.sellingPrice) * 100 : 0;
+                      const activeUnit = item.unitType || (item.isNewProduct ? (item.newBaseUnit || 'Tablet') : (matchedProduct?.baseUnit || 'Piece'));
 
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                           <td className="p-2 text-center font-mono text-slate-400 font-bold">
                             {idx + 1}
                           </td>
+
+                          {/* Medicine Name / Product Column */}
                           <td className="p-2">
+                            {item.isNewProduct ? (
+                              <div className="p-2 bg-emerald-50/60 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="px-1.5 py-0.5 bg-emerald-600 text-white rounded text-[9px] font-bold uppercase tracking-wider">
+                                    ✨ New Product
+                                  </span>
+                                  {purchaseModalMode !== 'view' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateGRNItem(item.id, 'productId', products[0]?.id || '')}
+                                      className="text-[10px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-medium underline"
+                                    >
+                                      Select Existing
+                                    </button>
+                                  )}
+                                </div>
+                                <input
+                                  type="text"
+                                  required
+                                  disabled={purchaseModalMode === 'view'}
+                                  placeholder="Medicine / Product Name *"
+                                  value={item.newBrandName || ''}
+                                  onChange={e => handleUpdateGRNItem(item.id, 'newBrandName', e.target.value)}
+                                  className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-900 font-bold text-xs border-emerald-400 dark:border-emerald-600 focus:ring-2 focus:ring-emerald-500 disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
+                                />
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-1">
+                                  <select
+                                    disabled={purchaseModalMode === 'view'}
+                                    value={item.productId}
+                                    onChange={e => handleUpdateGRNItem(item.id, 'productId', e.target.value)}
+                                    className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-semibold focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
+                                  >
+                                    <option value="__NEW_PRODUCT__" className="font-bold text-emerald-600">
+                                      ✨ + Add New Medicine / Product...
+                                    </option>
+                                    {products.map(p => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.brandName}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {purchaseModalMode !== 'view' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateGRNItem(item.id, 'productId', '__NEW_PRODUCT__')}
+                                      className="px-2 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm"
+                                      title="Register a new product that does not exist in the catalogue"
+                                    >
+                                      + New
+                                    </button>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-slate-400 block truncate">
+                                  SKU: {matchedProduct?.sku || 'N/A'} • {matchedProduct?.categoryName || 'General'}
+                                </span>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Unit Type Column */}
+                          <td className="p-2 text-center">
                             <select
-                              value={item.productId}
-                              onChange={e => handleUpdateGRNItem(item.id, 'productId', e.target.value)}
-                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-semibold focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs"
+                              disabled={purchaseModalMode === 'view'}
+                              value={activeUnit}
+                              onChange={e => {
+                                handleUpdateGRNItem(item.id, 'unitType', e.target.value);
+                                if (item.isNewProduct) {
+                                  handleUpdateGRNItem(item.id, 'newBaseUnit', e.target.value);
+                                }
+                              }}
+                              className="w-full px-1.5 py-1.5 border rounded-lg bg-white dark:bg-slate-900 text-xs font-semibold border-slate-300 dark:border-slate-700 text-center disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
                             >
-                              {products.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.brandName} ({p.genericName})
-                                </option>
+                              {['Box', 'Strip', 'Tablet', 'Capsule', 'Bottle', 'Tube', 'Sachet', 'Vial', 'Ampoule', 'Piece', 'Canister', 'Pack'].map(u => (
+                                <option key={u} value={u}>{u}</option>
                               ))}
                             </select>
-                            <span className="text-[10px] text-slate-400 mt-0.5 block">
-                              Dosage: {matchedProduct?.dosageForm || 'Oral'}
-                            </span>
+                            <span className="text-[10px] text-slate-400 mt-0.5 block">Unit</span>
                           </td>
+
+                          {/* Batch / Lot # Column */}
                           <td className="p-2">
                             <div className="flex items-center space-x-1">
                               <input
                                 type="text"
                                 required
+                                disabled={purchaseModalMode === 'view'}
                                 value={item.batchNumber}
                                 onChange={e => handleUpdateGRNItem(item.id, 'batchNumber', e.target.value)}
-                                className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs"
+                                className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
                               />
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateGRNItem(item.id, 'batchNumber', generateAutoGRNBatch(matchedProduct?.brandName))}
-                                title="Re-roll Batch Lot Code"
-                                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-brand-600"
-                              >
-                                <RefreshCw className="w-3.5 h-3.5" />
-                              </button>
+                              {purchaseModalMode !== 'view' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateGRNItem(item.id, 'batchNumber', generateAutoGRNBatch(item.isNewProduct ? (item.newBrandName || 'NEW') : matchedProduct?.brandName))}
+                                  title="Re-roll Batch Lot Code"
+                                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-brand-600"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </div>
                             <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5 block">
-                              ✓ Auto-Generated Lot
+                              ✓ Auto Lot
                             </span>
                           </td>
 
-                          {/* Intake Unit Mode Selector */}
-                          <td className="p-2 text-center">
-                            {hasPack ? (
-                              <div className="inline-flex p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateGRNItem(item.id, 'intakeUnitType', 'PACK')}
-                                  className={`px-2 py-1 rounded text-[10px] font-bold transition flex items-center space-x-1 ${
-                                    isPackMode
-                                      ? 'bg-brand-600 text-white shadow-sm'
-                                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                                  }`}
-                                  title={`Receive by Pack/Box of ${packMultiplier}`}
-                                >
-                                  <span>📦 Pack ({packMultiplier})</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateGRNItem(item.id, 'intakeUnitType', 'BASE')}
-                                  className={`px-2 py-1 rounded text-[10px] font-bold transition flex items-center space-x-1 ${
-                                    !isPackMode
-                                      ? 'bg-brand-600 text-white shadow-sm'
-                                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                                  }`}
-                                  title={`Receive by loose ${matchedProduct?.baseUnit || 'units'}`}
-                                >
-                                  <span>💊 {matchedProduct?.baseUnit || 'Loose'}</span>
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-semibold border border-slate-200 dark:border-slate-700">
-                                💊 {matchedProduct?.baseUnit || 'Base Unit'}
-                              </span>
-                            )}
-                          </td>
-
+                          {/* Mfg Date */}
                           <td className="p-2">
                             <input
                               type="date"
+                              disabled={purchaseModalMode === 'view'}
                               value={item.mfgDate}
                               onChange={e => handleUpdateGRNItem(item.id, 'mfgDate', e.target.value)}
-                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs"
+                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
                             />
                             <span className="text-[10px] text-slate-400 mt-0.5 block">Mfg</span>
                           </td>
+
+                          {/* Expiry Date */}
                           <td className="p-2">
                             <input
                               type="date"
                               required
+                              disabled={purchaseModalMode === 'view'}
                               value={item.expDate}
                               onChange={e => handleUpdateGRNItem(item.id, 'expDate', e.target.value)}
-                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold text-brand-600 focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs"
+                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-bold text-brand-600 focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
                             />
                             <span className="text-[10px] text-brand-600 font-medium mt-0.5 block">FEFO Key</span>
                           </td>
+
+                          {/* Received Qty */}
                           <td className="p-2">
-                            {isPackMode ? (
-                              <div>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  required
-                                  value={item.packQty}
-                                  onChange={e => handleUpdateGRNItem(item.id, 'packQty', e.target.value)}
-                                  className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-center focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs text-emerald-600"
-                                  placeholder="Boxes"
-                                />
-                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block mt-0.5 text-center truncate">
-                                  = {item.qty.toLocaleString()} {matchedProduct?.baseUnit || 'tabs'}
-                                </span>
-                              </div>
-                            ) : (
-                              <div>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  required
-                                  value={item.qty}
-                                  onChange={e => handleUpdateGRNItem(item.id, 'qty', parseInt(e.target.value) || 0)}
-                                  className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-center focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs text-emerald-600"
-                                  placeholder="Loose units"
-                                />
-                                <span className="text-[10px] text-slate-400 text-center block mt-0.5">
-                                  {matchedProduct?.baseUnit || 'units'}
-                                </span>
-                              </div>
-                            )}
+                            <input
+                              type="number"
+                              min="1"
+                              required
+                              disabled={purchaseModalMode === 'view'}
+                              value={item.qty}
+                              onChange={e => handleUpdateGRNItem(item.id, 'qty', parseInt(e.target.value) || 0)}
+                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-center focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs text-emerald-600 disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
+                              placeholder="Qty"
+                            />
+                            <span className="text-[10px] text-slate-400 text-center block mt-0.5">
+                              {activeUnit}s
+                            </span>
                           </td>
+
+                          {/* Unit Cost Price Column */}
                           <td className="p-2 text-right">
-                            {isPackMode ? (
-                              <div>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  required
-                                  value={item.packCost}
-                                  onChange={e => handleUpdateGRNItem(item.id, 'packCost', e.target.value)}
-                                  className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs"
-                                  placeholder="Cost / Pack"
-                                />
-                                <span className="text-[10px] text-slate-400 block mt-0.5 truncate">
-                                  {formatCurrency(item.unitCost)} / {matchedProduct?.baseUnit || 'tab'}
-                                </span>
-                              </div>
-                            ) : (
-                              <div>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  required
-                                  value={item.unitCost}
-                                  onChange={e => handleUpdateGRNItem(item.id, 'unitCost', parseFloat(e.target.value) || 0)}
-                                  className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs"
-                                  placeholder="Cost / Unit"
-                                />
-                                <span className="text-[10px] text-slate-400 block mt-0.5 truncate">
-                                  Per {matchedProduct?.baseUnit || 'unit'}
-                                </span>
-                              </div>
-                            )}
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              required
+                              disabled={purchaseModalMode === 'view'}
+                              value={item.unitCost}
+                              onChange={e => handleUpdateGRNItem(item.id, 'unitCost', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
+                              placeholder="Unit Cost"
+                            />
+                            <span className="text-[10px] text-slate-400 block mt-0.5 truncate">
+                              Cost / {activeUnit}
+                            </span>
                           </td>
+
+                          {/* Subtotal Cost Column (Qty * Unit Cost) */}
+                          <td className="p-2 text-right bg-slate-50/50 dark:bg-slate-800/30">
+                            <div className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                              {formatCurrency(lineCostSubtotal)}
+                            </div>
+                            <span className="text-[10px] text-slate-400 block mt-0.5 font-mono truncate">
+                              {item.qty} × {formatCurrency(item.unitCost)}
+                            </span>
+                          </td>
+
+                          {/* Unit Selling Price Column */}
                           <td className="p-2 text-right">
-                            {isPackMode ? (
-                              <div>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  required
-                                  value={item.packSellingPrice}
-                                  onChange={e => handleUpdateGRNItem(item.id, 'packSellingPrice', e.target.value)}
-                                  className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs text-brand-600"
-                                  placeholder="Sell / Pack"
-                                />
-                                <span className="text-[10px] text-brand-600/80 font-medium block mt-0.5 truncate">
-                                  {formatCurrency(item.sellingPrice)} / {matchedProduct?.baseUnit || 'tab'}
-                                </span>
-                              </div>
-                            ) : (
-                              <div>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  required
-                                  value={item.sellingPrice}
-                                  onChange={e => handleUpdateGRNItem(item.id, 'sellingPrice', parseFloat(e.target.value) || 0)}
-                                  className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs text-brand-600"
-                                  placeholder="Sell / Unit"
-                                />
-                                <span className="text-[10px] text-brand-600/80 font-medium block mt-0.5 truncate">
-                                  Per {matchedProduct?.baseUnit || 'unit'}
-                                </span>
-                              </div>
-                            )}
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              required
+                              disabled={purchaseModalMode === 'view'}
+                              value={item.sellingPrice}
+                              onChange={e => handleUpdateGRNItem(item.id, 'sellingPrice', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1.5 border rounded-lg bg-white dark:bg-slate-800 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-xs text-brand-600 disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
+                              placeholder="Unit Sell"
+                            />
+                            <span className="text-[10px] text-brand-600/80 font-medium block mt-0.5 truncate">
+                              Sell / {activeUnit}
+                            </span>
                           </td>
+
+                          {/* Subtotal Retail Column (Qty * Selling Price) */}
+                          <td className="p-2 text-right bg-emerald-50/30 dark:bg-emerald-950/20">
+                            <div className="font-mono font-bold text-emerald-700 dark:text-emerald-300 text-xs">
+                              {formatCurrency(lineRetailSubtotal)}
+                            </div>
+                            <span className="text-[10px] text-emerald-600/80 block mt-0.5 font-mono truncate">
+                              {item.qty} × {formatCurrency(item.sellingPrice)}
+                            </span>
+                          </td>
+
+                          {/* Profit & Margin Column */}
                           <td className="p-2 text-center">
                             <div className="space-y-1">
-                              <div className="flex items-center justify-center space-x-1.5 font-mono text-[11px]">
-                                <span className="font-bold text-slate-800 dark:text-slate-200">
-                                  +{formatCurrency(profit)}
+                              <div className="flex items-center justify-center space-x-1 font-mono text-[10px]">
+                                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                  +{formatCurrency(unitProfit)}/u
                                 </span>
-                                <span className="text-slate-400">|</span>
-                                <span className="font-bold text-brand-600">
-                                  {marginPercent.toFixed(1)}% mgn
+                                <span className="text-slate-300 dark:text-slate-600">|</span>
+                                <span className="font-bold text-teal-600 dark:text-teal-400">
+                                  +{formatCurrency(lineProfit)} tot
                                 </span>
                               </div>
                               <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold ${
@@ -2196,23 +2725,26 @@ export const PurchasingPage: React.FC = () => {
                                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' 
                                   : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               }`}>
-                                {marginPercent < 0 ? '⚠️ Loss' : marginPercent < 20 ? '⚠️ Low (<20%)' : '✓ Healthy (≥20%)'}
+                                {marginPercent < 0 ? `⚠️ Loss (${marginPercent.toFixed(1)}%)` : marginPercent < 20 ? `⚠️ Low (${marginPercent.toFixed(1)}%)` : `✓ ${marginPercent.toFixed(1)}% mgn`}
                               </span>
                             </div>
                           </td>
-                          <td className="p-2 text-right font-mono font-bold text-slate-900 dark:text-white">
-                            {formatCurrency(lineValuation)}
-                          </td>
+
+                          {/* Action Column */}
                           <td className="p-2 text-center">
-                            <button
-                              type="button"
-                              disabled={grnItems.length <= 1}
-                              onClick={() => handleRemoveGRNItem(item.id)}
-                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-30 disabled:hover:bg-transparent"
-                              title="Remove item"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {purchaseModalMode === 'view' ? (
+                              <span className="text-slate-300 dark:text-slate-600 text-xs font-mono">—</span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={grnItems.length <= 1}
+                                onClick={() => handleRemoveGRNItem(item.id)}
+                                className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-30 disabled:hover:bg-transparent"
+                                title="Remove item"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -2222,68 +2754,179 @@ export const PurchasingPage: React.FC = () => {
               </div>
             </div>
 
-            {/* GRN Modal Footer / Summary */}
-            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0">
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                <div className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs">
-                  <span className="text-slate-500">Products:</span>{' '}
-                  <strong className="text-slate-900 dark:text-white font-mono">{grnItems.length}</strong>
+            {/* Stock Receiving Financial Summary Footer */}
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3 flex-shrink-0">
+              {/* Top Summary Cards Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {/* Total Invoice Cost */}
+                <div className="p-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl space-y-0.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider">
+                    Total Invoice Cost
+                  </span>
+                  <div className="text-sm font-black font-mono text-slate-900 dark:text-white">
+                    {formatCurrency(intakeTotalCost)}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block truncate">
+                    Avg: {formatCurrency(intakeAvgUnitCost)} / unit
+                  </span>
                 </div>
-                <div className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs">
-                  <span className="text-slate-500">Total Units:</span>{' '}
-                  <strong className="text-emerald-600 font-mono">
-                    {grnItems.reduce((acc, i) => acc + (i.qty || 0), 0).toLocaleString()}
-                  </strong>
+
+                {/* Total Retail Value */}
+                <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl space-y-0.5">
+                  <span className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block tracking-wider">
+                    Total Retail Value
+                  </span>
+                  <div className="text-sm font-black font-mono text-emerald-700 dark:text-emerald-300">
+                    {formatCurrency(intakeTotalRetail)}
+                  </div>
+                  <span className="text-[10px] text-emerald-600/80 block truncate">
+                    Avg: {formatCurrency(intakeAvgUnitRetail)} / unit
+                  </span>
+                </div>
+
+                {/* Projected Gross Profit */}
+                <div className="p-2.5 bg-teal-50/60 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 rounded-xl space-y-0.5">
+                  <span className="text-[10px] uppercase font-bold text-teal-800 dark:text-teal-300 block tracking-wider">
+                    Projected Profit
+                  </span>
+                  <div className="text-sm font-black font-mono text-teal-700 dark:text-teal-300">
+                    +{formatCurrency(intakeTotalProfit)}
+                  </div>
+                  <span className={`inline-block px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                    intakeMarginPercent < 0 
+                      ? 'bg-rose-100 text-rose-800' 
+                      : intakeMarginPercent < 20 
+                      ? 'bg-amber-100 text-amber-800' 
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    {intakeMarginPercent.toFixed(1)}% Batch Margin
+                  </span>
+                </div>
+
+                {/* Units & Lines Intake Count */}
+                <div className="p-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl space-y-0.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider">
+                    Stock Volume
+                  </span>
+                  <div className="text-sm font-black font-mono text-slate-900 dark:text-white">
+                    {intakeTotalQty.toLocaleString()} Units
+                  </div>
+                  <span className="text-[10px] text-slate-400 block">
+                    Across {grnItems.length} Product Line(s)
+                  </span>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs">
-                    <span className="text-slate-500 font-medium">Invoice Cost:</span>{' '}
-                    <strong className="text-slate-800 dark:text-slate-200 font-bold font-mono text-sm ml-1">
-                      {formatCurrency(grnItems.reduce((acc, i) => acc + ((i.qty || 0) * (i.unitCost || 0)), 0))}
-                    </strong>
-                  </div>
-                  <div className="px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 rounded-lg text-xs">
-                    <span className="text-emerald-700 dark:text-emerald-300 font-medium">Retail Value:</span>{' '}
-                    <strong className="text-emerald-900 dark:text-emerald-100 font-bold font-mono text-sm ml-1">
-                      {formatCurrency(grnItems.reduce((acc, i) => acc + ((i.qty || 0) * (i.sellingPrice || 0)), 0))}
-                    </strong>
-                  </div>
-
-                  <label className="flex items-center space-x-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 select-none hover:bg-slate-200/70 dark:hover:bg-slate-750 transition" title="When checked, retail selling prices and pack definitions in the catalogue will be updated to reflect this shipment. When unchecked, only the received batch ledger and wholesale cost are recorded without altering master shelf prices.">
-                    <input
-                      type="checkbox"
-                      checked={updateMasterSellingPrice}
-                      onChange={e => setUpdateMasterSellingPrice(e.target.checked)}
-                      className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
-                    />
-                    <span>Update Master Catalogue Shelf Prices & Tiers</span>
-                  </label>
-                </div>
+              {/* Bottom Actions Row */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                <label className="flex items-center space-x-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 select-none hover:bg-slate-200/70 dark:hover:bg-slate-750 transition" title="When checked, retail selling prices and pack definitions in the catalogue will be updated to reflect this shipment. When unchecked, only the received batch ledger and wholesale cost are recorded without altering master shelf prices.">
+                  <input
+                    type="checkbox"
+                    disabled={purchaseModalMode === 'view'}
+                    checked={updateMasterSellingPrice}
+                    onChange={e => setUpdateMasterSellingPrice(e.target.checked)}
+                    className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer disabled:opacity-50"
+                  />
+                  <span>Update Master Catalogue Shelf Prices & Tiers</span>
+                </label>
 
                 <div className="flex items-center space-x-2 self-end sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => setShowGRNModal(false)}
-                    className="px-4 py-2 border rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-700"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center space-x-1.5"
-                  >
-                    <PackageCheck className="w-4 h-4" />
-                    <span>Commit Goods Receipt & Post to Shelf ({grnItems.length} Products)</span>
-                  </button>
+                  {purchaseModalMode === 'view' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleDownloadModalPOCSV}
+                        className="px-3 py-2 border rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-700 flex items-center space-x-1.5 transition"
+                        title="Download Line Items CSV"
+                      >
+                        <Download className="w-3.5 h-3.5 text-slate-500" />
+                        <span>CSV</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadModalPOPDF}
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center space-x-1.5 transition"
+                        title="Print or Save PDF Delivery Voucher"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-slate-300" />
+                        <span>PDF Voucher</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowGRNModal(false)}
+                        className="px-4 py-2 border rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-700"
+                      >
+                        Close
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPurchaseModalMode('edit')}
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center space-x-1.5"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                        <span>Edit This Purchase Record</span>
+                      </button>
+                    </>
+                  ) : purchaseModalMode === 'edit' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleDownloadModalPOCSV}
+                        className="px-3 py-2 border rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-700 flex items-center space-x-1.5 transition"
+                        title="Download Line Items CSV"
+                      >
+                        <Download className="w-3.5 h-3.5 text-slate-500" />
+                        <span>CSV</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadModalPOPDF}
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center space-x-1.5 transition"
+                        title="Print or Save PDF Delivery Voucher"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-slate-300" />
+                        <span>PDF Voucher</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowGRNModal(false)}
+                        className="px-4 py-2 border rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-700"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center space-x-1.5"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>Save Changes / Update Purchase</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowGRNModal(false)}
+                        className="px-4 py-2 border rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-700"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center space-x-1.5"
+                      >
+                        <PackageCheck className="w-4 h-4" />
+                        <span>Save & Post Stock to Shelves ({grnItems.length} Products)</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
           </form>
         </div>
-      )}
+        );
+      })()}
 
       {/* MODAL 3: VIEW BATCH OF PURCHASE DOSSIER (ALL PRODUCTS) */}
       {selectedBatchGroup && (

@@ -293,6 +293,16 @@ export function mapStorageLocationFromBackend(bLoc: any): StorageLocation {
 }
 
 export function mapPurchaseOrderFromBackend(bPo: any): PurchaseOrder {
+  const items = (bPo.lines || []).map((l: any) => ({
+    productId: String(l.product || ''),
+    productName: l.product_name || 'Pharmaceutical Item',
+    orderedQty: Number(l.quantity_ordered_base || 0),
+    receivedQty: Number(l.quantity_received_base || 0),
+    unitCost: Number(l.unit_cost_base || 0),
+    totalCost: Number(l.total_cost || l.line_total || (Number(l.quantity_ordered_base || 0) * Number(l.unit_cost_base || 0)) || 0)
+  }));
+  const calcTotal = items.reduce((acc: number, it: any) => acc + (it.totalCost || 0), 0);
+
   return {
     id: String(bPo.id),
     poNumber: bPo.po_number,
@@ -300,19 +310,38 @@ export function mapPurchaseOrderFromBackend(bPo: any): PurchaseOrder {
     supplierName: bPo.supplier_name || 'Authorized Supplier',
     createdAt: bPo.created_at ? bPo.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
     expectedDate: bPo.expected_delivery_date || bPo.created_at || new Date().toISOString().split('T')[0],
-    items: (bPo.lines || []).map((l: any) => ({
-      productId: String(l.product || ''),
-      productName: l.product_name || 'Pharmaceutical Item',
-      orderedQty: Number(l.quantity_ordered_base || 0),
-      receivedQty: Number(l.quantity_received_base || 0),
-      unitCost: Number(l.unit_cost_base || 0),
-      totalCost: Number(l.line_total || (l.quantity_ordered_base * l.unit_cost_base) || 0)
-    })),
-    totalAmount: Number(bPo.total_amount || 0),
+    items,
+    totalAmount: Number(bPo.total_estimated_cost || bPo.total_amount || calcTotal || 0),
     status: bPo.status || 'SUBMITTED',
     approvalStatus: bPo.approval_status || 'PENDING',
     approvedBy: bPo.approved_by ? String(bPo.approved_by) : undefined,
     notes: bPo.notes || ''
+  };
+}
+
+export function mapGoodsReceiptToPurchaseOrder(grn: any): PurchaseOrder {
+  const items = (grn.lines || []).map((l: any) => ({
+    productId: String(l.product || ''),
+    productName: l.product_name || 'Pharmaceutical Item',
+    orderedQty: Number(l.quantity_received_base || 0),
+    receivedQty: Number(l.quantity_received_base || 0),
+    unitCost: Number(l.unit_cost_base || 0),
+    totalCost: Number(l.total_cost || (Number(l.quantity_received_base || 0) * Number(l.unit_cost_base || 0)) || 0)
+  }));
+  const calcTotal = items.reduce((acc: number, it: any) => acc + (it.totalCost || 0), 0);
+
+  return {
+    id: String(grn.id),
+    poNumber: grn.grn_number,
+    supplierId: String(grn.supplier || ''),
+    supplierName: grn.supplier_name || 'Authorized Supplier',
+    createdAt: grn.received_at ? grn.received_at.split('T')[0] : new Date().toISOString().split('T')[0],
+    expectedDate: grn.received_at ? grn.received_at.split('T')[0] : new Date().toISOString().split('T')[0],
+    items,
+    totalAmount: Number(grn.total_invoice_amount || calcTotal || 0),
+    status: 'COMPLETED',
+    approvalStatus: 'APPROVED',
+    notes: `Stock Delivery Receipt (${grn.grn_number})${grn.supplier_invoice_number ? ` - Waybill: ${grn.supplier_invoice_number}` : ''}`
   };
 }
 

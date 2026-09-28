@@ -44,7 +44,8 @@ import {
   mapExpenseFromBackend,
   mapAuditEventFromBackend,
   mapStorageLocationFromBackend,
-  mapPurchaseOrderFromBackend
+  mapPurchaseOrderFromBackend,
+  mapGoodsReceiptToPurchaseOrder
 } from '../services/mappers';
 
 interface PharmacyContextType {
@@ -227,7 +228,7 @@ interface PharmacyContextType {
   setGlobalBulkDiscountPercent: (percent: number) => void;
   
   // State Mutators
-  addProduct: (product: Omit<Product, 'id'>) => void;
+  addProduct: (product: Omit<Product, 'id'> & { id?: string }) => Product;
   bulkAddProducts: (newProducts: Product[], autoCreateCategories?: boolean, newBatches?: Batch[]) => { count: number; newCategories: number; batchesCreated: number };
   updateProduct: (id: string, updates: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
@@ -236,6 +237,7 @@ interface PharmacyContextType {
     grnNumber: string, 
     items: Array<{ 
       productId: string; 
+      productName?: string;
       batchNumber: string; 
       mfgDate: string; 
       expDate: string; 
@@ -248,6 +250,7 @@ interface PharmacyContextType {
     metadata?: { supplierId?: string; supplierName?: string; storageLocation?: string; deliveryNote?: string }
   ) => void;
   quarantineBatch: (batchId: string, reason: string) => void;
+  restoreBatch: (batchId: string, reason?: string) => void;
   disposeBatch: (batchId: string, reason: string) => void;
   processSale: (saleData: Omit<Sale, 'id' | 'receiptNumber' | 'createdAt'>) => Sale;
   openShift: (openingFloat: number) => void;
@@ -263,6 +266,24 @@ interface PharmacyContextType {
   updateExpense: (id: string, updates: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
   addPurchaseOrder: (po: Omit<PurchaseOrder, 'id' | 'poNumber' | 'createdAt'>) => void;
+  updatePurchaseOrder: (
+    id: string,
+    updates: Partial<PurchaseOrder> & {
+      items?: Array<{
+        productId: string;
+        productName: string;
+        orderedQty: number;
+        receivedQty?: number;
+        unitCost: number;
+        totalCost: number;
+        sellingPrice?: number;
+        batchNumber?: string;
+        expiryDate?: string;
+        packagingTiers?: ProductPackagingTier[];
+      }>;
+      updateMasterSellingPrice?: boolean;
+    }
+  ) => void;
   approveRequest: (id: string) => void;
   rejectRequest: (id: string) => void;
   addCustomRole: (role: CustomRoleDefinition) => void;
@@ -343,10 +364,50 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [prodBatches, setProdBatches] = useState<Batch[]>([]);
   const [prodStockMovements, setProdStockMovements] = useState<StockMovement[]>([]);
   const [prodSales, setProdSales] = useState<Sale[]>([]);
-  const [prodDraftSales, setProdDraftSales] = useState<DraftSale[]>([]);
-  const [prodReturns, setProdReturns] = useState<SaleReturn[]>([]);
-  const [prodCreditNotes, setProdCreditNotes] = useState<CustomerCreditNote[]>([]);
-  const [prodCreditSales, setProdCreditSales] = useState<CreditAccountSale[]>([]);
+  const [prodDraftSales, setProdDraftSales] = useState<DraftSale[]>(() => {
+    try {
+      const saved = localStorage.getItem('greenlife_prod_draft_sales');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return initialDraftSales;
+  });
+
+  const [prodReturns, setProdReturns] = useState<SaleReturn[]>(() => {
+    try {
+      const saved = localStorage.getItem('greenlife_prod_returns');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return initialReturns;
+  });
+
+  const [prodCreditNotes, setProdCreditNotes] = useState<CustomerCreditNote[]>(() => {
+    try {
+      const saved = localStorage.getItem('greenlife_prod_credit_notes');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return initialCreditNotes;
+  });
+
+  const [prodCreditSales, setProdCreditSales] = useState<CreditAccountSale[]>(() => {
+    try {
+      const saved = localStorage.getItem('greenlife_prod_credit_sales');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return initialCreditSales;
+  });
+
   const [prodStorageLocations, setProdStorageLocations] = useState<StorageLocation[]>([]);
   const [prodShifts, setProdShifts] = useState<CashierShift[]>([]);
   const [prodActiveShift, setProdActiveShift] = useState<CashierShift | null>(null);
@@ -377,17 +438,81 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
   const sales = isDemo ? demoSales : prodSales;
   const setSales = (action: React.SetStateAction<Sale[]>) => isDemo ? setDemoSales(action) : setProdSales(action);
 
-  const draftSales = isDemo ? demoDraftSales : prodDraftSales;
-  const setDraftSales = (action: React.SetStateAction<DraftSale[]>) => isDemo ? setDemoDraftSales(action) : setProdDraftSales(action);
+  const draftSales = (isDemo ? demoDraftSales : prodDraftSales).length > 0 
+    ? (isDemo ? demoDraftSales : prodDraftSales) 
+    : initialDraftSales;
+  const setDraftSales = (action: React.SetStateAction<DraftSale[]>) => {
+    if (isDemo) {
+      setDemoDraftSales(prev => {
+        const next = typeof action === 'function' ? action(prev) : action;
+        try { localStorage.setItem('greenlife_demo_draft_sales', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    } else {
+      setProdDraftSales(prev => {
+        const next = typeof action === 'function' ? action(prev) : action;
+        try { localStorage.setItem('greenlife_prod_draft_sales', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+  };
 
-  const returns = isDemo ? demoReturns : prodReturns;
-  const setReturns = (action: React.SetStateAction<SaleReturn[]>) => isDemo ? setDemoReturns(action) : setProdReturns(action);
+  const returns = (isDemo ? demoReturns : prodReturns).length > 0 
+    ? (isDemo ? demoReturns : prodReturns) 
+    : initialReturns;
+  const setReturns = (action: React.SetStateAction<SaleReturn[]>) => {
+    if (isDemo) {
+      setDemoReturns(prev => {
+        const next = typeof action === 'function' ? action(prev) : action;
+        try { localStorage.setItem('greenlife_demo_returns', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    } else {
+      setProdReturns(prev => {
+        const next = typeof action === 'function' ? action(prev) : action;
+        try { localStorage.setItem('greenlife_prod_returns', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+  };
 
-  const creditNotes = isDemo ? demoCreditNotes : prodCreditNotes;
-  const setCreditNotes = (action: React.SetStateAction<CustomerCreditNote[]>) => isDemo ? setDemoCreditNotes(action) : setProdCreditNotes(action);
+  const creditNotes = (isDemo ? demoCreditNotes : prodCreditNotes).length > 0 
+    ? (isDemo ? demoCreditNotes : prodCreditNotes) 
+    : initialCreditNotes;
+  const setCreditNotes = (action: React.SetStateAction<CustomerCreditNote[]>) => {
+    if (isDemo) {
+      setDemoCreditNotes(prev => {
+        const next = typeof action === 'function' ? action(prev) : action;
+        try { localStorage.setItem('greenlife_demo_credit_notes', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    } else {
+      setProdCreditNotes(prev => {
+        const next = typeof action === 'function' ? action(prev) : action;
+        try { localStorage.setItem('greenlife_prod_credit_notes', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+  };
 
-  const creditSales = isDemo ? demoCreditSales : prodCreditSales;
-  const setCreditSales = (action: React.SetStateAction<CreditAccountSale[]>) => isDemo ? setDemoCreditSales(action) : setProdCreditSales(action);
+  const creditSales = (isDemo ? demoCreditSales : prodCreditSales).length > 0 
+    ? (isDemo ? demoCreditSales : prodCreditSales) 
+    : initialCreditSales;
+  const setCreditSales = (action: React.SetStateAction<CreditAccountSale[]>) => {
+    if (isDemo) {
+      setDemoCreditSales(prev => {
+        const next = typeof action === 'function' ? action(prev) : action;
+        try { localStorage.setItem('greenlife_demo_credit_sales', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    } else {
+      setProdCreditSales(prev => {
+        const next = typeof action === 'function' ? action(prev) : action;
+        try { localStorage.setItem('greenlife_prod_credit_sales', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+  };
 
   const storageLocations = isDemo ? demoStorageLocations : prodStorageLocations;
   const setStorageLocations = (action: React.SetStateAction<StorageLocation[]>) => isDemo ? setDemoStorageLocations(action) : setProdStorageLocations(action);
@@ -1150,11 +1275,28 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
       addSystemLog({ module: 'parties', level: 'ERROR', action: 'FETCH_CUSTOMERS_FAILED', details: err.message });
     }
 
-    // 9. Purchase Orders
+    // 9. Purchase Orders & Stock Intake Receipts
     try {
-      const posRes: any = await api.getPurchaseOrders();
+      const [posRes, grnsRes]: [any, any] = await Promise.all([
+        api.getPurchaseOrders().catch(() => []),
+        api.getGoodsReceiptNotes().catch(() => [])
+      ]);
       const poList = Array.isArray(posRes) ? posRes : (posRes?.results || []);
-      setProdPurchaseOrders(poList.map(mapPurchaseOrderFromBackend));
+      const grnList = Array.isArray(grnsRes) ? grnsRes : (grnsRes?.results || []);
+
+      const mappedPOs = poList.map(mapPurchaseOrderFromBackend);
+      const existingPONumbers = new Set(mappedPOs.map((p: any) => p.poNumber));
+
+      // Direct stock intakes (GRNs) appear seamlessly in the purchases list
+      const standaloneGRNs = grnList
+        .filter((g: any) => !existingPONumbers.has(g.grn_number))
+        .map(mapGoodsReceiptToPurchaseOrder);
+
+      const allPurchases = [...standaloneGRNs, ...mappedPOs].sort((a: any, b: any) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      setProdPurchaseOrders(allPurchases);
     } catch (err: any) {
       addSystemLog({ module: 'procurement', level: 'WARN', action: 'FETCH_POS_FAILED', details: err.message });
     }
@@ -1848,10 +1990,10 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
     setAuditLogs(prev => [newLog, ...prev]);
   };
 
-  const addProduct = (prodData: Omit<Product, 'id'>) => {
+  const addProduct = (prodData: Omit<Product, 'id'> & { id?: string }): Product => {
     const newProd: Product = {
       ...prodData,
-      id: `prod_${Date.now()}`,
+      id: prodData.id || `prod_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     };
     setProducts(prev => [newProd, ...prev]);
     logAuditEvent('PRODUCT_CREATED', 'catalogue', newProd.sku, `Added ${newProd.brandName} (${newProd.genericName})`);
@@ -1861,10 +2003,10 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
       barcode: prodData.barcode,
       brand_name: prodData.brandName,
       generic_name: prodData.genericName,
-      dosage_form_name: prodData.dosageForm,
-      strength: prodData.strength,
+      dosage_form_name: prodData.dosageForm || 'Tablet',
+      strength: prodData.strength || 'Standard',
       pack_box_multiplier: prodData.packagingTiers?.find(t => t.tierType === 'PACK')?.multiplier || 1,
-      category_name: prodData.categoryName,
+      category_name: prodData.categoryName || 'General Pharmaceuticals',
       base_dispensing_unit: prodData.baseUnit,
       cost_price_base: prodData.unitCost,
       selling_price_base: prodData.sellingPrice,
@@ -1890,6 +2032,8 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
         showNotification('error', `Failed to save product to database: ${err.message}`, 'Database Error');
         addSystemLog({ module: 'catalogue', level: 'ERROR', action: 'CREATE_PRODUCT_FAILED', details: err.message });
       });
+
+    return newProd;
   };
 
   const bulkAddProducts = (newProducts: Product[], autoCreateCategories: boolean = true, newBatches?: Batch[]) => {
@@ -2094,6 +2238,7 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
     grnNumber: string, 
     items: Array<{
       productId: string;
+      productName?: string;
       batchNumber: string;
       mfgDate: string;
       expDate: string;
@@ -2110,7 +2255,7 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
       const newBatch: Batch = {
         id: `batch_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
         productId: item.productId,
-        productName: prod ? prod.brandName : 'Unknown Product',
+        productName: item.productName || (prod ? prod.brandName : 'Unknown Product'),
         batchNumber: item.batchNumber,
         manufacturingDate: item.mfgDate,
         expiryDate: item.expDate,
@@ -2138,7 +2283,7 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
         movementType: 'PURCHASE_RECEIVE',
         productId: item.productId,
-        productName: prod ? prod.brandName : 'Product',
+        productName: item.productName || (prod ? prod.brandName : 'Product'),
         batchId: newBatch.id,
         batchNumber: newBatch.batchNumber,
         quantity: item.qty,
@@ -2168,18 +2313,48 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     logAuditEvent('STOCK_RECEIVED', 'inventory', grnNumber, `Received ${items.length} product batches via GRN`);
 
+    // Record purchase order representation so it immediately displays in the Purchases table list
+    const totalOrderCost = items.reduce((sum, it) => sum + (it.qty * it.unitCost), 0);
+    const newCompletedPO: PurchaseOrder = {
+      id: `po_rcv_${Date.now()}`,
+      poNumber: grnNumber,
+      supplierId: metadata?.supplierId || 'sup_001',
+      supplierName: metadata?.supplierName || 'Wholesale Supplier',
+      expectedDate: new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString().split('T')[0],
+      status: 'COMPLETED',
+      totalAmount: totalOrderCost,
+      notes: `Stock Delivery Receipt ${grnNumber}${metadata?.deliveryNote ? ` (Waybill: ${metadata.deliveryNote})` : ''}`,
+      items: items.map(it => ({
+        productId: it.productId,
+        productName: it.productName || (products.find(p => p.id === it.productId)?.brandName || 'Medication'),
+        orderedQty: it.qty,
+        receivedQty: it.qty,
+        unitCost: it.unitCost,
+        totalCost: it.qty * it.unitCost
+      }))
+    };
+    setPurchaseOrders(prev => [newCompletedPO, ...prev]);
+
     // Dispatch GRN to backend API
     const grnPayload = {
       supplier_id: metadata?.supplierId || '',
       grn_number: grnNumber,
       supplier_invoice_number: metadata?.deliveryNote || '',
-      lines: items.map(item => ({
-        product_id: item.productId,
-        batch_number: item.batchNumber,
-        expiry_date: item.expDate,
-        quantity_received_base: item.qty,
-        unit_cost_base: item.unitCost,
-      }))
+      lines: items.map(item => {
+        const prod = products.find(p => p.id === item.productId);
+        const resolvedName = item.productName || prod?.brandName || '';
+        return {
+          product_id: item.productId,
+          product_name: resolvedName,
+          brand_name: resolvedName,
+          selling_price: item.sellingPrice,
+          batch_number: item.batchNumber,
+          expiry_date: item.expDate,
+          quantity_received_base: item.qty,
+          unit_cost_base: item.unitCost,
+        };
+      })
     };
 
     api.createGoodsReceiptNote(grnPayload)
@@ -2188,6 +2363,20 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
         api.getBatches().then(res => {
           const bList = Array.isArray(res) ? res : (res?.results || []);
           if (bList.length > 0) setBatches(bList.map((b: any) => mapBatchFromBackend(b)));
+        }).catch(() => {});
+        // Also refresh live purchases so backend IDs sync cleanly
+        api.getGoodsReceiptNotes().then(grnsRes => {
+          const gList = Array.isArray(grnsRes) ? grnsRes : (grnsRes?.results || []);
+          if (gList.length > 0) {
+            setPurchaseOrders(prev => {
+              const mappedGRNs = gList.map(mapGoodsReceiptToPurchaseOrder);
+              const existingMap = new Map(prev.map(p => [p.poNumber, p]));
+              mappedGRNs.forEach((mg: any) => existingMap.set(mg.poNumber, mg));
+              return Array.from(existingMap.values()).sort((a, b) => 
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              );
+            });
+          }
         }).catch(() => {});
       })
       .catch(err => {
@@ -2518,6 +2707,44 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
     logAuditEvent('BATCH_QUARANTINED', 'inventory', target.batchNumber, reason);
   };
 
+  const restoreBatch = (batchId: string, reason?: string) => {
+    const target = batches.find(b => b.id === batchId);
+    if (!target) return;
+
+    const restoreQty = target.quantityOnHand > 0 ? target.quantityOnHand : target.initialStock;
+    const restoreReason = reason || 'Batch inspected, cleared, and restored to active dispensing inventory';
+
+    setBatches(prev => prev.map(b => b.id === batchId ? { 
+      ...b, 
+      status: 'ACTIVE', 
+      availableQuantity: restoreQty 
+    } : b));
+
+    setProducts(prev => prev.map(p => p.id === target.productId ? {
+      ...p,
+      availableQuantity: p.availableQuantity + restoreQty
+    } : p));
+
+    const mov: StockMovement = {
+      id: `mov_${Date.now()}`,
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      movementType: 'QUARANTINE_RELEASE',
+      productId: target.productId,
+      productName: target.productName,
+      batchId: target.id,
+      batchNumber: target.batchNumber,
+      quantity: restoreQty,
+      balanceBefore: 0,
+      balanceAfter: restoreQty,
+      referenceNumber: `REL-${Date.now().toString().slice(-4)}`,
+      actorName: currentUser.name,
+      reason: restoreReason
+    };
+    setStockMovements(prev => [mov, ...prev]);
+    logAuditEvent('BATCH_RESTORED', 'inventory', target.batchNumber, restoreReason);
+    showNotification('success', `Batch ${target.batchNumber} (${target.productName}) has been restored to active stock with ${restoreQty} units.`, 'Batch Restored to Shelf');
+  };
+
   const disposeBatch = (batchId: string, reason: string) => {
     const target = batches.find(b => b.id === batchId);
     if (!target) return;
@@ -2614,17 +2841,22 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
       let momoDelta = 0;
       let creditDelta = 0;
 
+      let cashTendered = 0;
       saleData.payments.forEach(p => {
-        if (p.method === 'CASH') cashDelta += (p.amount - saleData.changeDue);
+        if (p.method === 'CASH') cashTendered += p.amount;
         if (p.method === 'CARD') cardDelta += p.amount;
         if (p.method === 'TRANSFER') transferDelta += p.amount;
         if (p.method === 'MOMO') momoDelta += p.amount;
         if (p.method === 'CREDIT') creditDelta += p.amount;
       });
 
+      // Change given out to customer comes out of cash drawer regardless of whether tender was cash or electronic
+      const changeGiven = saleData.changeDue || 0;
+      cashDelta = cashTendered - changeGiven;
+
       setActiveShift({
         ...activeShift,
-        cashSales: activeShift.cashSales + cashDelta,
+        cashSales: activeShift.cashSales + Math.max(0, cashDelta),
         cardSales: activeShift.cardSales + cardDelta,
         transferSales: activeShift.transferSales + transferDelta,
         momoSales: (activeShift.momoSales || 0) + momoDelta,
@@ -3384,6 +3616,94 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
       });
   };
 
+  const updatePurchaseOrder = (
+    poId: string, 
+    updates: Partial<PurchaseOrder> & {
+      items?: Array<{
+        productId: string;
+        productName: string;
+        orderedQty: number;
+        receivedQty?: number;
+        unitCost: number;
+        totalCost: number;
+        sellingPrice?: number;
+        batchNumber?: string;
+        expiryDate?: string;
+        packagingTiers?: ProductPackagingTier[];
+      }>;
+      updateMasterSellingPrice?: boolean;
+    }
+  ) => {
+    setPurchaseOrders(prev => prev.map(po => {
+      if (po.id === poId || po.poNumber === poId) {
+        const updatedTotal = updates.totalAmount !== undefined 
+          ? updates.totalAmount 
+          : (updates.items ? updates.items.reduce((s, it) => s + (it.totalCost || 0), 0) : po.totalAmount);
+        
+        const mergedItems = updates.items 
+          ? updates.items.map(it => ({
+              productId: it.productId,
+              productName: it.productName,
+              orderedQty: it.orderedQty,
+              receivedQty: it.receivedQty !== undefined ? it.receivedQty : it.orderedQty,
+              unitCost: it.unitCost,
+              totalCost: it.totalCost || (it.orderedQty * it.unitCost),
+              sellingPrice: it.sellingPrice,
+              batchNumber: it.batchNumber,
+              expiryDate: it.expiryDate,
+              packagingTiers: it.packagingTiers
+            }))
+          : po.items;
+
+        return {
+          ...po,
+          ...updates,
+          totalAmount: updatedTotal,
+          items: mergedItems
+        };
+      }
+      return po;
+    }));
+
+    // If items were updated, also synchronize active batches and product shelf prices
+    if (updates.items && updates.items.length > 0) {
+      updates.items.forEach((it: any) => {
+        // Update batch prices if batch matches
+        setBatches(prev => prev.map(b => {
+          if (b.grnNumber === poId || b.productId === it.productId) {
+            return {
+              ...b,
+              unitCost: it.unitCost,
+              costPrice: it.unitCost,
+              sellingPrice: it.sellingPrice || b.sellingPrice,
+              batchNumber: it.batchNumber || b.batchNumber,
+              expiryDate: it.expiryDate || b.expiryDate
+            };
+          }
+          return b;
+        }));
+
+        // Update product catalogue shelf prices if requested
+        if (updates.updateMasterSellingPrice !== false) {
+          setProducts(prev => prev.map(p => {
+            if (p.id === it.productId) {
+              return {
+                ...p,
+                unitCost: it.unitCost,
+                sellingPrice: it.sellingPrice || p.sellingPrice,
+                packagingTiers: it.packagingTiers || p.packagingTiers
+              };
+            }
+            return p;
+          }));
+        }
+      });
+    }
+
+    logAuditEvent('PO_UPDATED', 'procurement', poId, `Updated purchase record ${updates.poNumber || poId}`);
+    showNotification('success', `Purchase record ${updates.poNumber || poId} updated successfully.`, 'Purchase Updated');
+  };
+
   const approveRequest = (id: string) => {
     setApprovals(prev => prev.map(a => a.id === id ? { ...a, status: 'APPROVED' } : a));
     logAuditEvent('APPROVAL_GRANTED', 'administration', id, `Approval request ${id} accepted by ${currentUser.name}`);
@@ -3502,6 +3822,7 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
       addUnitType,
       receiveStock,
       quarantineBatch,
+      restoreBatch,
       disposeBatch,
       processSale,
       draftSales,
@@ -3526,6 +3847,7 @@ export const PharmacyProvider: React.FC<{ children: ReactNode }> = ({ children }
       updateExpense,
       deleteExpense,
       addPurchaseOrder,
+      updatePurchaseOrder,
       approveRequest,
       rejectRequest,
       addCustomRole,

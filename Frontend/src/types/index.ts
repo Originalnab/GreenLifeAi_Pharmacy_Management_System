@@ -265,7 +265,8 @@ export type MovementType =
   | 'DAMAGE_WRITE_OFF'
   | 'COUNT_ADJUSTMENT'
   | 'EXPIRED_DISPOSAL'
-  | 'QUARANTINE_TRANSFER';
+  | 'QUARANTINE_TRANSFER'
+  | 'QUARANTINE_RELEASE';
 
 export interface StockMovement {
   id: string;
@@ -452,6 +453,10 @@ export interface PurchaseOrderItem {
   receivedQty: number;
   unitCost: number;
   totalCost: number;
+  sellingPrice?: number;
+  batchNumber?: string;
+  expiryDate?: string;
+  packagingTiers?: ProductPackagingTier[];
 }
 
 export interface PurchaseOrder {
@@ -647,6 +652,7 @@ export interface SystemProfile {
   logoUrl?: string;
   branchName: string;
   requireDoctorAuthorization?: boolean; // When false, POS allows direct selling of POMs without doctor sign-off
+  requirePrescriberLicense?: boolean; // When false (default), POS prescription sign-off does not require medical license number
 }
 
 export interface ApiCredentialsConfig {

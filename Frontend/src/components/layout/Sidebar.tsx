@@ -52,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'sales', label: 'Sales & Returns', icon: Receipt, badge: totalSalesBadge > 0 ? totalSalesBadge : null, module: 'sales' },
     { id: 'catalogue', label: 'Product Catalogue', icon: Pill, module: 'catalogue' },
     { id: 'inventory', label: 'Inventory & Expiry', icon: Boxes, module: 'inventory' },
-    { id: 'purchasing', label: 'Purchasing & GRN', icon: Truck, module: 'purchasing' },
+    { id: 'purchasing', label: 'Purchasing & Stock Receiving', icon: Truck, module: 'purchasing' },
     { id: 'parties', label: 'Customers & Suppliers', icon: Users, module: 'parties' },
     { id: 'finance', label: 'Finance & Loans', icon: Wallet, module: 'finance' },
     { id: 'reports', label: 'Reports & Analytics', icon: BarChart3, module: 'reports' },

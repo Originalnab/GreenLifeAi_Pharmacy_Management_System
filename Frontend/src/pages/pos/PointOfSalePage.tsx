@@ -415,7 +415,8 @@ export const PointOfSalePage: React.FC = () => {
   };
 
   const confirmPrescription = () => {
-    if (!prescriptionData.prescriberName || !prescriptionData.prescriberLicense || !prescriptionData.patientName) {
+    const isLicenseMandatory = systemProfile.requirePrescriberLicense ?? false;
+    if (!prescriptionData.patientName?.trim() || !prescriptionData.prescriberName?.trim() || (isLicenseMandatory && !prescriptionData.prescriberLicense?.trim())) {
       toast.warning('Please fill out all required prescriber and patient credentials.', 'Missing Credentials');
       return;
     }
@@ -453,7 +454,7 @@ export const PointOfSalePage: React.FC = () => {
       }
     }
 
-    const changeDue = cash > 0 ? Math.max(0, totalTendered - grandTotal) : 0;
+    const changeDue = Math.max(0, totalTendered - grandTotal);
 
     const tenders: PaymentTender[] = [];
     if (cash > 0) tenders.push({ method: 'CASH', amount: cash });
@@ -634,7 +635,7 @@ export const PointOfSalePage: React.FC = () => {
                     {prod.brandName}
                   </h4>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                    {prod.genericName} • {prod.strength}
+                    {prod.strength || prod.dosageForm || 'Dispensary Item'}
                   </p>
                 </div>
 
@@ -886,7 +887,7 @@ export const PointOfSalePage: React.FC = () => {
             disabled={cart.length === 0}
             className="w-full py-3 bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white font-bold rounded-xl text-sm shadow-md shadow-brand-600/25 flex items-center justify-center space-x-2 transition disabled:opacity-50"
           >
-            <span>Tender Payment (F9)</span>
+            <span>Pay Now (F9)</span>
           </button>
         </div>
       </div>
@@ -925,15 +926,18 @@ export const PointOfSalePage: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="font-semibold block mb-1">Medical License Number *</label>
-                <input
-                  type="text"
-                  value={prescriptionData.prescriberLicense}
-                  onChange={e => setPrescriptionData({ ...prescriptionData, prescriberLicense: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800"
-                />
-              </div>
+              {(systemProfile.requirePrescriberLicense ?? false) && (
+                <div>
+                  <label className="font-semibold block mb-1">Medical License Number *</label>
+                  <input
+                    type="text"
+                    value={prescriptionData.prescriberLicense}
+                    onChange={e => setPrescriptionData({ ...prescriptionData, prescriberLicense: e.target.value })}
+                    placeholder="e.g. MDCN-44109 / Registration #"
+                    className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-800"
+                  />
+                </div>
+              )}
 
               <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
                 <p className="font-bold">Supervising Pharmacist Sign-Off</p>
@@ -959,8 +963,8 @@ export const PointOfSalePage: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
-                <h3 className="font-bold text-base text-slate-900 dark:text-white">Multi-Tender Payment</h3>
-                <p className="text-xs text-slate-500">Split payment across tender methods in {currentCurrency.name}</p>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">Payment</h3>
+                <p className="text-xs text-slate-500">Choose payment method in {currentCurrency.name}</p>
               </div>
               <button onClick={() => setShowTenderModal(false)}><X className="w-4 h-4" /></button>
             </div>
@@ -1110,18 +1114,63 @@ export const PointOfSalePage: React.FC = () => {
                 >
                   Full Card
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTransferAmount(grandTotal.toFixed(2));
+                    setCashTendered('');
+                    setCardAmount('');
+                    setMomoAmount('');
+                    setCreditAmount('');
+                  }}
+                  className="px-2.5 py-1 bg-purple-50 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border border-purple-300 rounded-lg text-[10px] font-bold"
+                >
+                  Full Transfer
+                </button>
               </div>
             </div>
 
-            {/* Change Due calculation */}
-            {parseFloat(cashTendered) > 0 && (
-              <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl flex justify-between items-center text-xs font-bold">
-                <span>Change Due to Customer:</span>
-                <span className="text-base text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(Math.max(0, (parseFloat(cashTendered) || 0) + (parseFloat(cardAmount) || 0) + (parseFloat(transferAmount) || 0) + (parseFloat(momoAmount) || 0) + (parseFloat(creditAmount) || 0) - grandTotal))}
-                </span>
-              </div>
-            )}
+            {/* Dynamic Tender & Change Due Summary */}
+            {(() => {
+              const currentTenderTotal = 
+                (parseFloat(cashTendered) || 0) + 
+                (parseFloat(cardAmount) || 0) + 
+                (parseFloat(transferAmount) || 0) + 
+                (parseFloat(momoAmount) || 0) + 
+                (parseFloat(creditAmount) || 0);
+              const changeDue = Math.max(0, currentTenderTotal - grandTotal);
+              const remaining = Math.max(0, grandTotal - currentTenderTotal);
+              const isCovered = currentTenderTotal >= grandTotal - 0.001;
+
+              return (
+                <div className={`p-3 rounded-xl border transition flex items-center justify-between text-xs font-bold ${
+                  isCovered
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800'
+                    : 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800'
+                }`}>
+                  <div className="space-y-0.5">
+                    <span className="block text-slate-700 dark:text-slate-200">
+                      {isCovered ? 'Change Due to Customer:' : 'Remaining Balance Due:'}
+                    </span>
+                    <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                      Total Tendered: <strong className="text-slate-800 dark:text-slate-200">{formatCurrency(currentTenderTotal)}</strong> of {formatCurrency(grandTotal)}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-base font-extrabold font-mono ${
+                      isCovered ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                    }`}>
+                      {isCovered ? formatCurrency(changeDue) : formatCurrency(remaining)}
+                    </span>
+                    {isCovered && changeDue > 0 && (
+                      <span className="block text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                        Dispense cash change
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="flex justify-end space-x-2 pt-2 border-t">
               <button onClick={() => setShowTenderModal(false)} className="px-4 py-2 border rounded-lg text-xs font-semibold">

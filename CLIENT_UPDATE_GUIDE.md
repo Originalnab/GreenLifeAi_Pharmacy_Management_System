@@ -1,49 +1,71 @@
-# GreenLife AI — Client Machine Automated Update Guide
+# GreenLife AI — Client Machine Automated Production Update Guide
 
-This guide describes how to apply system updates, resolve previous 502/port-binding issues, and restart the GreenLife AI Pharmacy Management System on the client's local computer using the automated update utility.
+This guide describes how to safely apply system updates to the GreenLife AI Pharmacy Management System on the client's local production computer with **100% database data preservation**.
 
 ---
 
-## ⚡ Quick 1-Click Update (Automated)
+## 🛡️ Enterprise Data Preservation Guarantee
 
-An automated updater has been provided in the project root: **`Update-GreenLife-System.bat`**.
+> [!IMPORTANT]
+> **Zero Data Loss Guarantee**:
+> - All sales records, patient data, stock batches, dispensations, and custom settings stored in `greenlifeai_postgres_volume` are **strictly preserved**.
+> - An automated SQL database snapshot (`backups\greenlife_db_pre_update_YYYYMMDD_HHMMSS.sql`) is automatically created before any containers are stopped.
+> - The destructive `-v` flag is never used during updates.
 
-### Instructions for the Client Machine:
-1. **Transfer the updated files** to the client machine (via Git pull or by copying/unzipping the updated project folder).
-2. Ensure **Docker Desktop** is open and running (the whale icon in the taskbar is steady green).
-3. In the project folder, double-click **`Update-GreenLife-System.bat`**.
-4. The script will perform the entire upgrade procedure automatically, report success, and open the updated login screen in the browser.
+---
+
+## ⚡ Method 1: 1-Click Update (Online / Connected Client PC)
+
+Use this method if the client PC has internet access or is synced via Git/Zip copy.
+
+### Steps on the Client Machine:
+1. Ensure **Docker Desktop** is open and running (the whale icon in the taskbar is steady green).
+2. Copy the latest project files to the client machine (or run `git pull`).
+3. Double-click **`Update-GreenLife-System.bat`**.
+4. The script will automatically:
+   - Check Docker engine health.
+   - Pull latest code updates (if git-connected).
+   - **Take an automatic safety backup** of the current database into `backups\`.
+   - Safely stop old containers without touching the database volume.
+   - Build and start updated containers with the new frontend and backend.
+   - Apply any new database migrations.
+   - Poll backend health check until online.
+   - Automatically launch the browser at `http://localhost`.
+
+---
+
+## ⚡ Method 2: Offline Update via USB (No Internet on Client PC)
+
+Use this method if the pharmacy computer is completely offline.
+
+### Step A: On the Developer PC (Connected):
+1. Double-click **`Export-Docker-Images.bat`**.
+2. This creates **`greenlife_images.tar`** (~350MB) containing all 4 pre-built Docker images.
+3. Copy `greenlife_images.tar` and the project folder onto a USB flash drive.
+
+### Step B: On the Client PC (Offline):
+1. Insert the USB drive and copy the project folder (including `greenlife_images.tar`) to the client's Desktop.
+2. Ensure Docker Desktop is running.
+3. Double-click **`Import-Docker-Images.bat`**.
+4. The script loads the updated images, takes a pre-update backup of any existing database, applies updates safely, and launches `http://localhost`.
 
 ---
 
 ## ⚙️ What the Automated Script Does (Step-by-Step)
 
-The update utility automatically runs through five sequential phases:
-
 ```
-[Step 1/5] Verifies Docker Engine is running.
+[Step 1/6] Verifies Docker Engine is running.
       │
-[Step 2/5] Detects Git repository and pulls latest remote commits (or preserves copied files).
+[Step 2/6] Checks for codebase updates (git pull or local files).
       │
-[Step 3/5] Gracefully shuts down old containers and clears conflicting volumes (docker compose down -v).
+[Step 3/6] 🔒 TAKES AUTOMATIC PRE-UPDATE DATABASE BACKUP to backups/*.sql.
       │
-[Step 4/5] Rebuilds and launches updated containers (PostgreSQL 16, Redis 7, Backend, Frontend Nginx).
+[Step 4/6] Gracefully stops old containers (database volume PRESERVED 100%).
       │
-[Step 5/5] Polls the Backend API healthcheck until online, then launches http://localhost.
+[Step 5/6] Builds and starts updated containers with latest features.
+      │
+[Step 6/6] Runs database migrations, verifies healthcheck, and opens browser.
 ```
-
----
-
-## 🛠️ Summary of Fixes Included in this Update
-
-| Component | Previous State (Caused 502) | Updated State (Fixed) |
-| :--- | :--- | :--- |
-| **PostgreSQL Host Port** | Bound to `5432:5432` (collided with existing postgres instances on host) | Remapped to `5434:5432` *(internal Docker communication remains standard)* |
-| **Redis Host Port** | Bound to `6379:6379` | Remapped to `6380:6379` |
-| **Database Initializer** | Raw SQL volume mount created duplicate tables (`categories`) crashing Django | Removed conflicting mount; Django migrations apply cleanly with `seed_all.py` |
-| **Startup Timing** | Fixed 5-second sleep before opening browser | Intelligent polling loop that waits until backend responds `200 OK` |
-| **Build Optimization** | Copied `node_modules` into Docker context | Added `.dockerignore` for fast, lightweight rebuilds |
-| **Default Credentials** | `superadmin` / `Admin@1234` | Updated to **`Admink19`** / **`Admin1224`** |
 
 ---
 
@@ -63,11 +85,11 @@ After the update script completes:
    - `greenlifeai_redis` (Port `6380->6379`)
 
 2. **Verify API Healthcheck**:
-   In PowerShell or browser:
+   In browser:
    ```text
    http://localhost/api/v1/health/
    ```
-   Response should be:
+   Response:
    ```json
    {
      "status": "ONLINE",
@@ -77,8 +99,11 @@ After the update script completes:
    }
    ```
 
-3. **Sign In to the System**:
-   Navigate to `http://localhost` and enter:
+3. **Verify Existing Client Data**:
+   - Log in at `http://localhost`.
+   - Go to **Sales History**, **Inventory**, and **Settings** to confirm all previous client transactions, inventory balances, and users remain intact.
+
+4. **Sign In Credentials**:
    - **Username**: `Admink19`
    - **Password**: `Admin1224`
 
@@ -86,21 +111,17 @@ After the update script completes:
 
 ## 🛟 Troubleshooting & FAQs
 
-### Q1: The script says `[ERROR] Docker is not running!`
-- **Solution**: Open Docker Desktop from the Windows Start menu. Wait 30 seconds for the Docker daemon to initialize, then run `Update-GreenLife-System.bat` again.
+### Q1: The script says `[ERROR] Docker Desktop is not running!`
+- **Solution**: Open Docker Desktop from the Windows Start menu. Wait 30 seconds for the engine to initialize, then run `Update-GreenLife-System.bat` again.
 
-### Q2: Port 80 is occupied by another local service (e.g., IIS / Skype / Apache).
-- **Solution**: Open `docker-compose.yml`, find the `frontend` service, and change:
-  ```yaml
-  ports:
-    - "8080:80"
-  ```
-  Then re-run `Update-GreenLife-System.bat`. Access the application at `http://localhost:8080`.
+### Q2: Where is the backup file located?
+- **Solution**: Check the `backups\` folder in the root directory. Files are named:
+  `backups\greenlife_db_pre_update_YYYYMMDD_HHMMSS.sql`.
 
 ### Q3: How do other computers on the pharmacy Wi-Fi access the system?
 - **Solution**:
-  1. On the host PC, run `ipconfig` to get its local IPv4 address (e.g. `192.168.1.50`).
-  2. On cashier or pharmacist terminals on the same network, open Chrome/Edge and go to:
+  1. On the host PC, run `ipconfig` in Command Prompt to get its IPv4 address (e.g. `192.168.1.50`).
+  2. On cashier or pharmacist laptops/terminals on the same Wi-Fi, open Chrome or Edge and go to:
      ```text
      http://192.168.1.50
      ```

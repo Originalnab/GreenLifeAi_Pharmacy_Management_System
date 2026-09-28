@@ -262,7 +262,7 @@ export const StockValuationReportTab: React.FC<{ filterState: ReportFilterState 
                     <tr key={item.product.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="p-3.5">
                         <div className="font-bold text-slate-900 dark:text-white">{item.product.brandName}</div>
-                        <div className="text-[11px] text-slate-500">{item.product.genericName} • {item.product.strength}</div>
+                        <div className="text-[11px] text-slate-500">{item.product.strength || item.product.dosageForm || 'Dispensary Item'}</div>
                       </td>
                       <td className="p-3.5 text-slate-600 dark:text-slate-400">{item.categoryName}</td>
                       <td className="p-3.5 text-center font-bold text-slate-900 dark:text-white">

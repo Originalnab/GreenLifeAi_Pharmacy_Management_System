@@ -290,51 +290,47 @@ export const SalesHistoryPage: React.FC<SalesHistoryPageProps> = ({
   });
 
   // Filter Returns Logic
-  const filteredReturns = returns.filter(r => {
-    if (effectiveScope === 'OWN') {
-      const matchName = r.authorizedByPharmacist && (
-        r.authorizedByPharmacist.toLowerCase() === currentUser.name.toLowerCase() ||
-        r.authorizedByPharmacist.toLowerCase() === currentUser.username.toLowerCase()
-      );
-      // Returns might also belong to this cashier
-      if (!matchName && !isSuperAdmin && !isPharmacyAdmin) {
-        // Allow viewing returns corresponding to user's sales
-      }
-    }
+  const filteredReturns = (returns || []).filter(r => {
+    const term = (searchTerm || '').trim().toLowerCase();
+    if (!term) return true;
     return (
-      r.creditNoteNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.customerName && r.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      r.reason.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.authorizedByPharmacist.toLowerCase().includes(searchTerm.toLowerCase())
+      (r.creditNoteNumber || '').toLowerCase().includes(term) ||
+      (r.receiptNumber || '').toLowerCase().includes(term) ||
+      (r.customerName && r.customerName.toLowerCase().includes(term)) ||
+      (r.reason && r.reason.toLowerCase().includes(term)) ||
+      (r.authorizedByPharmacist && r.authorizedByPharmacist.toLowerCase().includes(term))
     );
   });
 
   // Filter Drafts Logic
-  const filteredDrafts = draftSales.filter(d => {
-    if (effectiveScope === 'OWN') {
+  const filteredDrafts = (draftSales || []).filter(d => {
+    if (effectiveScope === 'OWN' && !isSuperAdmin && !isPharmacyAdmin && !isManager) {
       const matchId = d.cashierId && d.cashierId === currentUser.id;
       const matchName = d.cashierName && (
         d.cashierName.toLowerCase() === currentUser.name.toLowerCase() ||
         d.cashierName.toLowerCase() === currentUser.username.toLowerCase()
       );
-      if (!matchId && !matchName) return false;
+      if (d.cashierId && !matchId && !matchName) return false;
     }
+    const term = (searchTerm || '').trim().toLowerCase();
+    if (!term) return true;
     return (
-      d.draftNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (d.title && d.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (d.customerName && d.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      d.cashierName.toLowerCase().includes(searchTerm.toLowerCase())
+      (d.draftNumber || '').toLowerCase().includes(term) ||
+      (d.title && d.title.toLowerCase().includes(term)) ||
+      (d.customerName && d.customerName.toLowerCase().includes(term)) ||
+      (d.cashierName && d.cashierName.toLowerCase().includes(term))
     );
   });
 
   // Filter Credit Notes Logic
   const filteredCreditNotes = (creditNotes || []).filter(c => {
-    const matchesSearch = 
-      c.creditNoteNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.reason.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.sourceReference && c.sourceReference.toLowerCase().includes(searchTerm.toLowerCase()));
+    const term = (searchTerm || '').trim().toLowerCase();
+    const matchesSearch = !term || (
+      (c.creditNoteNumber || '').toLowerCase().includes(term) ||
+      (c.customerName || '').toLowerCase().includes(term) ||
+      (c.reason || '').toLowerCase().includes(term) ||
+      (c.sourceReference && c.sourceReference.toLowerCase().includes(term))
+    );
     
     const matchesStatus = creditStatusFilter === 'ALL' || c.status === creditStatusFilter;
     return matchesSearch && matchesStatus;
@@ -347,19 +343,27 @@ export const SalesHistoryPage: React.FC<SalesHistoryPageProps> = ({
   } = usePagination(filteredSales, 10, [searchTerm, statusFilter, paymentMethodFilter, dateRangePreset]);
 
   const filteredCreditSales = (creditSales || []).filter(cs => {
-    const matchesSearch = 
-      cs.saleNumber.toLowerCase().includes(creditSaleSearch.toLowerCase()) ||
-      cs.customerName.toLowerCase().includes(creditSaleSearch.toLowerCase()) ||
-      cs.cashierName.toLowerCase().includes(creditSaleSearch.toLowerCase()) ||
-      cs.customerId.toLowerCase().includes(creditSaleSearch.toLowerCase());
-    if (!matchesSearch) return false;
+    const term = (creditSaleSearch || (activeSubTab === 'sales:credit' ? searchTerm : '')).trim().toLowerCase();
+    if (term) {
+      const saleNum = (cs.saleNumber || (cs as any).invoiceNumber || '').toLowerCase();
+      const custName = (cs.customerName || '').toLowerCase();
+      const cashier = (cs.cashierName || '').toLowerCase();
+      const custId = (cs.customerId || '').toLowerCase();
 
-    const isOverdue = cs.status !== 'PAID' && new Date(cs.dueDate) < new Date();
+      const matchesSearch = 
+        saleNum.includes(term) ||
+        custName.includes(term) ||
+        cashier.includes(term) ||
+        custId.includes(term);
+      if (!matchesSearch) return false;
+    }
+
+    const isOverdue = cs.status !== 'PAID' && (cs.status as any) !== 'SETTLED' && new Date(cs.dueDate) < new Date();
     if (creditSaleStatusFilter === 'ALL') return true;
     if (creditSaleStatusFilter === 'OVERDUE') return isOverdue;
-    if (creditSaleStatusFilter === 'OUTSTANDING') return cs.status === 'OUTSTANDING' && !isOverdue;
+    if (creditSaleStatusFilter === 'OUTSTANDING') return (cs.status === 'OUTSTANDING' || (cs.status as any) === 'UNPAID') && !isOverdue;
     if (creditSaleStatusFilter === 'PARTIALLY_PAID') return cs.status === 'PARTIALLY_PAID' && !isOverdue;
-    if (creditSaleStatusFilter === 'PAID') return cs.status === 'PAID';
+    if (creditSaleStatusFilter === 'PAID') return cs.status === 'PAID' || (cs.status as any) === 'SETTLED';
     return true;
   });
 
@@ -367,7 +371,7 @@ export const SalesHistoryPage: React.FC<SalesHistoryPageProps> = ({
     currentPage: creditSalesPage,
     setCurrentPage: setCreditSalesPage,
     paginatedItems: paginatedCreditSales,
-  } = usePagination(filteredCreditSales, 10, [creditSaleSearch, creditSaleStatusFilter]);
+  } = usePagination(filteredCreditSales, 10, [creditSaleSearch, creditSaleStatusFilter, searchTerm, activeSubTab]);
 
   const {
     currentPage: draftsPage,

@@ -64,7 +64,7 @@ export const StockOverviewWidget: React.FC<StockOverviewWidgetProps> = ({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{p.brandName}</p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{p.genericName} · {p.strength}</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{p.strength || p.dosageForm || 'Dispensary Item'}</p>
               </div>
               <div className="text-right flex-shrink-0">
                 <p className="text-xs font-extrabold text-slate-900 dark:text-white">{p.availableQuantity} units</p>

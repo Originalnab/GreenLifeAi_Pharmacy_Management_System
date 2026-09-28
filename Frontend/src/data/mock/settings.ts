@@ -22,7 +22,8 @@ export const initialSystemProfile: SystemProfile = {
   defaultVatPercent: 7.5,
   logoUrl: '',
   branchName: 'Greenlife Central Branch (Victoria Island)',
-  requireDoctorAuthorization: true
+  requireDoctorAuthorization: true,
+  requirePrescriberLicense: false
 };
 
 export const initialApiCredentials: ApiCredentialsConfig = {

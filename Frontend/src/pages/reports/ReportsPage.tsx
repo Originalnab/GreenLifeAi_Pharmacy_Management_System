@@ -94,7 +94,7 @@ const REPORT_TABS: TabMeta[] = [
   },
   { 
     id: 'procurement_grn', 
-    label: 'Procurement & GRN', 
+    label: 'Stock Receiving', 
     category: 'Operations & Ledgers', 
     icon: Truck,
     description: 'Purchase orders raised, supplier fulfillment rate, and pending deliveries'

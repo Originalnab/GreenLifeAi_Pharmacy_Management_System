@@ -79,7 +79,7 @@ export const PurchasesReportTab: React.FC<{ filterState: ReportFilterState }> = 
 
             <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800 shadow-sm space-y-2">
               <div className="flex justify-between items-center text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">
-                <span>GRN Received Value</span>
+                <span>Stock Received Value</span>
                 <PackageCheck className="w-4 h-4" />
               </div>
               <p className="text-2xl font-black text-emerald-900 dark:text-emerald-200 tracking-tight">
@@ -158,7 +158,7 @@ export const PurchasesReportTab: React.FC<{ filterState: ReportFilterState }> = 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm animate-in fade-in duration-200">
           <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
             <div>
-              <h3 className="font-bold text-slate-900 dark:text-white text-sm">Procurement & GRN Receiving Ledger</h3>
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm">Stock Receiving & Delivery Ledger</h3>
               <p className="text-xs text-slate-500">Comprehensive audit of purchase orders, deliveries, and fulfillment status</p>
             </div>
             <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 rounded-full border border-indigo-200 dark:border-indigo-800">

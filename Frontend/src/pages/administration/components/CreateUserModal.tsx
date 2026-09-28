@@ -338,7 +338,7 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
                   onChange={e => setRole(e.target.value as RoleType)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold focus:ring-2 focus:ring-brand-500 focus:outline-none cursor-pointer"
                 >
-                  {(currentUser.role === 'Super Admin' || currentUser.username === 'superadmin' || currentUser.username?.toLowerCase() === 'admink19') && (
+                  {(currentUser?.role === 'Super Admin' || currentUser?.primaryRole === 'Super Admin' || currentUser?.username?.toLowerCase() === 'admink19' || currentUser?.username === 'superadmin' || (Array.isArray(currentUser?.assignedRoles) && currentUser.assignedRoles.includes('Super Admin'))) && (
                     <option value="Super Admin">Super Admin (Full Access)</option>
                   )}
                   <option value="Pharmacy Admin">Pharmacy Admin</option>

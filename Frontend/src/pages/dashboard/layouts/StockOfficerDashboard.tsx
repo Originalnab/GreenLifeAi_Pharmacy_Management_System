@@ -113,7 +113,7 @@ export const StockOfficerDashboard: React.FC<StockOfficerDashboardProps> = ({ on
 
       <RecommendationsPanel recommendations={[
         ...(expCount > 0 ? [{ type: 'critical' as const, title: `${expCount} batches expiring within 60 days`, description: 'Process quarantine or return workflows before medicines become unsaleable.', actionLabel: 'Expiry Queue', onAction: () => onNavigate('inventory') }] : []),
-        ...(awaitRec > 0 ? [{ type: 'info' as const, title: `${awaitRec} purchase orders ready to receive`, description: 'Complete goods receiving to update stock balances and close open POs.', actionLabel: 'Receiving', onAction: () => onNavigate('purchasing') }] : []),
+        ...(awaitRec > 0 ? [{ type: 'info' as const, title: `${awaitRec} purchase orders ready to receive`, description: 'Complete stock receiving to update inventory balances and close open POs.', actionLabel: 'Receiving', onAction: () => onNavigate('purchasing') }] : []),
         { type: 'neutral', title: 'Schedule routine stock count', description: 'Regular physical counts prevent variance buildup and detect discrepancies early.', },
       ]} />
     </div>

@@ -331,8 +331,15 @@ export const AdministrationPage: React.FC = () => {
     }
   }, [selectedUserId, userAuthorizations]);
 
+  const isSuperAdmin = 
+    currentUser?.role === 'Super Admin' || 
+    currentUser?.primaryRole === 'Super Admin' || 
+    currentUser?.username?.toLowerCase() === 'admink19' || 
+    currentUser?.username === 'superadmin' || 
+    (Array.isArray(currentUser?.assignedRoles) && currentUser.assignedRoles.includes('Super Admin'));
+
   const allRoles: string[] = [
-    'Super Admin',
+    ...(isSuperAdmin ? ['Super Admin'] : []),
     'Pharmacy Admin',
     'Manager',
     'Pharmacist',
@@ -344,6 +351,23 @@ export const AdministrationPage: React.FC = () => {
     'Auditor',
     ...customRoles.map(r => r.name)
   ];
+
+  const isDemo = operatingMode === 'DEMO';
+
+  const visibleUsers = users.filter(u => {
+    if (!isSuperAdmin) {
+      const isSA = 
+        u.role === 'Super Admin' || 
+        u.primaryRole === 'Super Admin' || 
+        u.username?.toLowerCase() === 'admink19' || 
+        u.username === 'superadmin' || 
+        (Array.isArray(u.assignedRoles) && u.assignedRoles.includes('Super Admin'));
+      if (isSA) return false;
+    }
+    if (isDemo) return true;
+    if (isSuperAdmin && showDemoUsersInProd) return true;
+    return !isDemoUser(u);
+  });
 
   const handleToggleMatrixAction = (module: ModuleName, action: PermissionAction) => {
     if (selectedRole === 'Super Admin') return; // Super Admin has permanent full access
@@ -491,7 +515,7 @@ export const AdministrationPage: React.FC = () => {
     setTimeout(() => setUserActionNotice(null), 3500);
   };
 
-  const selectedUser = users.find(u => u.id === selectedUserId) || users[0];
+  const selectedUser = users.find(u => u.id === selectedUserId) || (visibleUsers && visibleUsers[0]) || users[0];
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -520,15 +544,6 @@ export const AdministrationPage: React.FC = () => {
     setNewRoleDesc('');
     toast.success(`Custom role "${newRole.name}" saved to RBAC registry.`, 'Role Created');
   };
-
-  const isSuperAdmin = currentUser?.role === 'Super Admin';
-  const isDemo = operatingMode === 'DEMO';
-
-  const visibleUsers = users.filter(u => {
-    if (isDemo) return true;
-    if (isSuperAdmin && showDemoUsersInProd) return true;
-    return !isDemoUser(u);
-  });
 
   const filteredUsers = visibleUsers.filter(u => {
     const matchesSearch = u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
@@ -1004,6 +1019,60 @@ export const AdministrationPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Secondary Clinical Dispensing Rule: Prescriber Medical License Number */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700/80">
+                <div className="flex items-start space-x-3">
+                  <div className={`p-2 rounded-lg ${
+                    (profileForm.requirePrescriberLicense ?? false)
+                      ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                  }`}>
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2 flex-wrap">
+                      <h5 className="font-bold text-xs text-slate-900 dark:text-white">
+                        Require Prescriber Medical License Number (MDCN / Registration No.)
+                      </h5>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                        Field Requirement
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      When <strong>OFF</strong> (default), cashiers and pharmacists only need Patient Name and Prescribing Doctor. When <strong>ON</strong>, the official doctor registration / MDCN license number becomes mandatory.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-3 self-end sm:self-center flex-shrink-0">
+                  <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                    {(profileForm.requirePrescriberLicense ?? false) ? 'Mandatory' : 'Disabled (Hidden)'}
+                  </span>
+                  <button
+                    type="button"
+                    id="toggle-prescriber-license"
+                    onClick={() => {
+                      const newVal = !(profileForm.requirePrescriberLicense ?? false);
+                      const updated = { ...profileForm, requirePrescriberLicense: newVal };
+                      setProfileForm(updated);
+                      updateSystemProfile({ requirePrescriberLicense: newVal });
+                    }}
+                    className={`relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                      (profileForm.requirePrescriberLicense ?? false) ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                    role="switch"
+                    aria-checked={profileForm.requirePrescriberLicense ?? false}
+                    title="Toggle Prescriber Medical License Requirement"
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        (profileForm.requirePrescriberLicense ?? false) ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
               {/* Policy Visual Simulation Box */}
               <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
                 <div className="flex items-center justify-between text-xs">
@@ -1046,10 +1115,12 @@ export const AdministrationPage: React.FC = () => {
                       <span className="font-semibold text-slate-800 dark:text-slate-200">Prescribing Doctor *: </span>
                       <span className="text-slate-700 dark:text-slate-300">Dr. Kelechi Nnamdi</span>
                     </div>
-                    <div>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">Medical License Number *: </span>
-                      <span className="font-mono text-slate-700 dark:text-slate-300">MDCN-44109</span>
-                    </div>
+                    {(profileForm.requirePrescriberLicense ?? false) && (
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">Medical License Number *: </span>
+                        <span className="font-mono text-slate-700 dark:text-slate-300">MDCN-44109</span>
+                      </div>
+                    )}
                     <div className="p-2 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                       <p className="font-bold text-slate-800 dark:text-slate-200">Supervising Pharmacist Sign-Off</p>
                       <p className="text-[10px] text-emerald-600 font-semibold">Dr. Adeyemi Adeleke (PCN-SA-88392)</p>
@@ -1228,7 +1299,7 @@ export const AdministrationPage: React.FC = () => {
                 className="py-1.5 px-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none"
               >
                 <option value="ALL">All Roles</option>
-                <option value="Super Admin">Super Admin</option>
+                {isSuperAdmin && <option value="Super Admin">Super Admin</option>}
                 <option value="Pharmacy Admin">Pharmacy Admin</option>
                 <option value="Manager">Manager</option>
                 <option value="Pharmacist">Pharmacist</option>
@@ -1922,7 +1993,7 @@ export const AdministrationPage: React.FC = () => {
                     onChange={e => setSelectedUserId(e.target.value)}
                     className="p-2.5 rounded-xl border border-brand-300 dark:border-brand-700 bg-brand-50/50 dark:bg-brand-950/40 font-bold text-brand-900 dark:text-brand-200 min-w-[260px]"
                   >
-                    {users.map(u => (
+                    {visibleUsers.map(u => (
                       <option key={u.id} value={u.id}>
                         {u.name} — {u.role} ({u.active ? 'Active' : 'Inactive'})
                       </option>
@@ -2367,7 +2438,11 @@ export const AdministrationPage: React.FC = () => {
               {/* Category-Grouped Navigation Matrix */}
               <div className="space-y-4">
                 {Array.from(new Set(ALL_NAVIGATION_MODULES.map(m => m.category))).map(categoryName => {
-                  const categoryModules = ALL_NAVIGATION_MODULES.filter(m => m.category === categoryName);
+                  const categoryModules = ALL_NAVIGATION_MODULES.filter(m => {
+                    if (!isSuperAdmin && (m.id === 'settings' || m.parentId === 'settings' || m.isSystemLocked)) return false;
+                    return m.category === categoryName;
+                  });
+                  if (categoryModules.length === 0) return null;
                   const mainModules = categoryModules.filter(m => m.type === 'main');
 
                   return (
@@ -2384,6 +2459,7 @@ export const AdministrationPage: React.FC = () => {
 
                       <div className="p-4 space-y-4 divide-y divide-slate-100 dark:divide-slate-800">
                         {mainModules.map(mainMod => {
+                          if (!isSuperAdmin && (mainMod.id === 'settings' || mainMod.isSystemLocked)) return null;
                           const isMainEnabled = navRoleMenuState[mainMod.id] !== false;
                           const subModules = categoryModules.filter(m => m.parentId === mainMod.id);
 
