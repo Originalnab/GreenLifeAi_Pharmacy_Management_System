@@ -107,7 +107,6 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
         'Tablet', 'Capsule', 'Bottle', 'Vial', 'Ampoule',
         'Tube', 'Sachet', 'Piece', 'Pack', 'Box', 'mL'
       ];
-      const pomList = ['Yes', 'No'];
 
       // Populate Lookup Sheet
       lookupSheet.getCell('A1').value = 'Categories';
@@ -125,11 +124,6 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
         lookupSheet.getCell(`C${idx + 2}`).value = unit;
       });
 
-      lookupSheet.getCell('D1').value = 'POM';
-      pomList.forEach((pom, idx) => {
-        lookupSheet.getCell(`D${idx + 2}`).value = pom;
-      });
-
       worksheet.columns = [
         { header: 'Medicine Name (Required)', key: 'name', width: 32 },
         { header: 'Category', key: 'category', width: 32 },
@@ -138,9 +132,6 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
         { header: 'Unit', key: 'unit', width: 18 },
         { header: 'Cost Price', key: 'cost', width: 18 },
         { header: 'Selling Price (Required)', key: 'price', width: 26 },
-        { header: 'Barcode', key: 'barcode', width: 22 },
-        { header: 'Reorder Level', key: 'reorder', width: 18 },
-        { header: 'Prescription Required', key: 'pom', width: 24 },
       ];
 
       // Header styling
@@ -154,82 +145,61 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
       headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false };
       headerRow.height = 28;
 
-      // Sample medication rows
+      // Sample medication rows (Clean 7-column schema)
       worksheet.addRow({
         name: 'Amoxil 500mg',
-        generic: 'Amoxicillin Trihydrate',
         category: 'Antibiotics & Anti-Infectives',
         form: 'Capsule',
         strength: '500mg',
         unit: 'Capsule',
         cost: 1.20,
-        price: 2.50,
-        barcode: '8901032104501',
-        reorder: 50,
-        pom: 'Yes'
+        price: 2.50
       });
       worksheet.addRow({
         name: 'Panadol Extra',
-        generic: 'Paracetamol + Caffeine',
         category: 'Analgesics & Antipyretics',
         form: 'Tablet',
         strength: '500mg/65mg',
         unit: 'Tablet',
         cost: 0.50,
-        price: 1.00,
-        barcode: '8901032104502',
-        reorder: 100,
-        pom: 'No'
+        price: 1.00
       });
       worksheet.addRow({
         name: 'Paracetamol Paediatric Suspension',
-        generic: 'Paracetamol Oral',
         category: 'Analgesics & Antipyretics',
         form: 'Syrup',
         strength: '120mg/5mL',
         unit: 'Bottle',
         cost: 12.00,
-        price: 20.00,
-        barcode: '8901032104503',
-        reorder: 30,
-        pom: 'No'
+        price: 20.00
       });
       worksheet.addRow({
         name: 'Gentamicin Injection',
-        generic: 'Gentamicin Sulfate',
         category: 'Antibiotics & Anti-Infectives',
         form: 'Injection',
         strength: '80mg/2mL',
         unit: 'Vial',
         cost: 3.50,
-        price: 7.00,
-        barcode: '8901032104504',
-        reorder: 20,
-        pom: 'Yes'
+        price: 7.00
       });
       worksheet.addRow({
         name: 'Insulin Mixtard 30/70',
-        generic: 'Biphasic Isophane Insulin',
         category: 'Antidiabetics & Endocrine',
         form: 'Injection',
         strength: '100IU/mL',
         unit: 'Vial',
         cost: 85.00,
-        price: 130.00,
-        barcode: '',
-        reorder: 20,
-        pom: 'Yes'
+        price: 130.00
       });
 
       const catRange = `LookupLists!$A$2:$A$${catNames.length + 1}`;
       const formRange = `LookupLists!$B$2:$B$${dosageForms.length + 1}`;
       const unitRange = `LookupLists!$C$2:$C$${unitList.length + 1}`;
-      const pomRange = `LookupLists!$D$2:$D$${pomList.length + 1}`;
 
       // Apply Excel sheet reference Data Validation to rows 2 through 500
       for (let r = 2; r <= 500; r++) {
-        // Column C: Category (Col 3)
-        worksheet.getCell(`C${r}`).dataValidation = {
+        // Column B: Category (Col 2)
+        worksheet.getCell(`B${r}`).dataValidation = {
           type: 'list',
           allowBlank: true,
           formulae: [catRange],
@@ -237,8 +207,8 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
           errorTitle: 'Invalid Category',
           error: 'Please select a therapeutic category from the dropdown.'
         };
-        // Column D: Dosage Form (Col 4)
-        worksheet.getCell(`D${r}`).dataValidation = {
+        // Column C: Dosage Form (Col 3)
+        worksheet.getCell(`C${r}`).dataValidation = {
           type: 'list',
           allowBlank: true,
           formulae: [formRange],
@@ -246,8 +216,8 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
           errorTitle: 'Invalid Dosage Form',
           error: 'Please select a dosage form from the dropdown.'
         };
-        // Column F: Unit (Col 6)
-        worksheet.getCell(`F${r}`).dataValidation = {
+        // Column E: Unit (Col 5)
+        worksheet.getCell(`E${r}`).dataValidation = {
           type: 'list',
           allowBlank: true,
           formulae: [unitRange],
@@ -255,20 +225,12 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
           errorTitle: 'Invalid Unit',
           error: 'Please select a dispensing unit from the dropdown.'
         };
-        // Column K: Prescription Required (Col 11)
-        worksheet.getCell(`K${r}`).dataValidation = {
-          type: 'list',
-          allowBlank: true,
-          formulae: [pomRange],
-          showErrorMessage: true,
-          errorTitle: 'Invalid Selection',
-          error: 'Please select Yes or No.'
-        };
 
         // Number Formatting
+        // Column F: Cost Price (Col 6)
+        worksheet.getCell(`F${r}`).numFmt = '#,##0.00';
+        // Column G: Selling Price (Col 7)
         worksheet.getCell(`G${r}`).numFmt = '#,##0.00';
-        worksheet.getCell(`H${r}`).numFmt = '#,##0.00';
-        worksheet.getCell(`J${r}`).numFmt = '#,##0';
       }
 
       const buffer = await workbook.xlsx.writeBuffer();
@@ -296,17 +258,14 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
       'Strength',
       'Unit',
       'Cost Price',
-      'Selling Price',
-      'Barcode',
-      'Reorder Level',
-      'Prescription Required'
+      'Selling Price'
     ];
     const sampleRows = [
-      'Amoxil 500mg,Antibiotics & Anti-Infectives,Capsule,500mg,Capsule,1.20,2.50,8901032104501,50,Yes',
-      'Panadol Extra,Analgesics & Antipyretics,Tablet,500mg/65mg,Tablet,0.50,1.00,8901032104502,100,No',
-      'Paracetamol Paediatric,Analgesics & Antipyretics,Syrup,120mg/5mL,Bottle,12.00,20.00,8901032104503,30,No',
-      'Gentamicin Injection,Antibiotics & Anti-Infectives,Injection,80mg/2mL,Vial,3.50,7.00,8901032104504,20,Yes',
-      'Insulin Mixtard 30/70,Antidiabetics & Endocrine,Injection,100IU/mL,Vial,85.00,130.00,,20,Yes'
+      'Amoxil 500mg,Antibiotics & Anti-Infectives,Capsule,500mg,Capsule,1.20,2.50',
+      'Panadol Extra,Analgesics & Antipyretics,Tablet,500mg/65mg,Tablet,0.50,1.00',
+      'Paracetamol Paediatric,Analgesics & Antipyretics,Syrup,120mg/5mL,Bottle,12.00,20.00',
+      'Gentamicin Injection,Antibiotics & Anti-Infectives,Injection,80mg/2mL,Vial,3.50,7.00',
+      'Insulin Mixtard 30/70,Antidiabetics & Endocrine,Injection,100IU/mL,Vial,85.00,130.00'
     ];
 
     const templateContent = [headers.join(','), ...sampleRows].join('\n');
@@ -835,11 +794,11 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
                   <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                   <span>Download Simplified Formulary Template</span>
                   <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded">
-                    11 Key Columns
+                    7 Simplified Columns
                   </span>
                 </h4>
                 <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                  Only <strong>Medicine Name</strong> and <strong>Selling Price</strong> are required. Category, Dosage Form, Unit, and POM include in-cell dropdown selectors.
+                  Only <strong>Medicine Name</strong> and <strong>Selling Price</strong> are required. Category, Dosage Form, and Unit include in-cell dropdown selectors.
                 </p>
               </div>
 
@@ -951,24 +910,6 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({ isOpen
                       <td className="p-2.5"><span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold text-[10px]">REQUIRED</span></td>
                       <td className="p-2.5 text-slate-500">Numeric decimal</td>
                       <td className="p-2.5 text-rose-600 italic">Must be greater than 0.00</td>
-                    </tr>
-                    <tr>
-                      <td className="p-2.5 font-bold text-slate-900 dark:text-white">Barcode</td>
-                      <td className="p-2.5"><span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium text-[10px]">Optional</span></td>
-                      <td className="p-2.5 text-slate-500">EAN-13 / UPC string</td>
-                      <td className="p-2.5 text-emerald-600 font-medium">Auto-generated EAN-13 barcode</td>
-                    </tr>
-                    <tr>
-                      <td className="p-2.5 font-bold text-slate-900 dark:text-white">Reorder Level</td>
-                      <td className="p-2.5"><span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium text-[10px]">Optional</span></td>
-                      <td className="p-2.5 text-slate-500">Integer threshold</td>
-                      <td className="p-2.5 text-slate-500">Defaults to 50 units</td>
-                    </tr>
-                    <tr>
-                      <td className="p-2.5 font-bold text-slate-900 dark:text-white">Prescription Required</td>
-                      <td className="p-2.5"><span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium text-[10px]">Optional</span></td>
-                      <td className="p-2.5 font-semibold text-emerald-600">✅ Dropdown (Yes / No)</td>
-                      <td className="p-2.5 text-slate-500">Defaults to "No" (OTC)</td>
                     </tr>
                   </tbody>
                 </table>

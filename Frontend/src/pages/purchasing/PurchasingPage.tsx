@@ -122,6 +122,15 @@ export const PurchasingPage: React.FC = () => {
     return `${prefix}-${y}${m}${d}-${rand}`;
   };
 
+  // Smart Commercial Price Rounding for fast dispensary cash transactions
+  const roundCommercial = (val: number): number => {
+    if (val <= 0) return 0;
+    if (val < 1) return Math.round(val * 10) / 10;
+    if (val <= 5) return Math.round(val * 2) / 2;
+    if (val <= 20) return Math.round(val * 2) / 2;
+    return Math.round(val);
+  };
+
   // PO State
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id || '');
   const [expectedDate, setExpectedDate] = useState('2026-09-30');
@@ -1066,7 +1075,37 @@ export const PurchasingPage: React.FC = () => {
         } else {
           const prod = products.find(p => p.id === item.productId);
           finalProductName = prod ? prod.brandName : 'Product';
-          packagingTiers = updateMasterSellingPrice ? prod?.packagingTiers : undefined;
+          if (updateMasterSellingPrice && prod?.packagingTiers && prod.packagingTiers.length > 0) {
+            const isBoxIntake = item.unitType === 'Box' || item.unitType === 'Pack';
+            const baseMultiplier = prod.packagingTiers.find(t => t.tierType === 'PACK')?.multiplier || 1;
+            
+            packagingTiers = prod.packagingTiers.map(t => {
+              if (t.tierType === 'PACK') {
+                const newPrice = isBoxIntake ? item.sellingPrice : roundCommercial(item.sellingPrice * t.multiplier);
+                const newCost = isBoxIntake ? item.unitCost : Number((item.unitCost * t.multiplier).toFixed(2));
+                return { ...t, sellingPrice: newPrice, costPrice: newCost };
+              } else if (t.tierType === 'STRIP') {
+                const stripMult = t.multiplier || 10;
+                const newPrice = isBoxIntake 
+                  ? roundCommercial((item.sellingPrice / (baseMultiplier / stripMult)) * 1.08)
+                  : roundCommercial(item.sellingPrice * stripMult);
+                const newCost = isBoxIntake 
+                  ? Number((item.unitCost / (baseMultiplier / stripMult)).toFixed(2))
+                  : Number((item.unitCost * stripMult).toFixed(2));
+                return { ...t, sellingPrice: newPrice, costPrice: newCost };
+              } else {
+                const newPrice = isBoxIntake 
+                  ? roundCommercial((item.sellingPrice / baseMultiplier) * 1.15)
+                  : item.sellingPrice;
+                const newCost = isBoxIntake 
+                  ? Number((item.unitCost / baseMultiplier).toFixed(2))
+                  : item.unitCost;
+                return { ...t, sellingPrice: newPrice, costPrice: newCost };
+              }
+            });
+          } else {
+            packagingTiers = updateMasterSellingPrice ? prod?.packagingTiers : undefined;
+          }
         }
 
         return {
@@ -1186,7 +1225,37 @@ export const PurchasingPage: React.FC = () => {
       } else {
         const prod = products.find(p => p.id === item.productId);
         finalProductName = prod ? prod.brandName : 'Product';
-        packagingTiers = updateMasterSellingPrice ? prod?.packagingTiers : undefined;
+        if (updateMasterSellingPrice && prod?.packagingTiers && prod.packagingTiers.length > 0) {
+          const isBoxIntake = item.unitType === 'Box' || item.unitType === 'Pack';
+          const baseMultiplier = prod.packagingTiers.find(t => t.tierType === 'PACK')?.multiplier || 1;
+          
+          packagingTiers = prod.packagingTiers.map(t => {
+            if (t.tierType === 'PACK') {
+              const newPrice = isBoxIntake ? item.sellingPrice : roundCommercial(item.sellingPrice * t.multiplier);
+              const newCost = isBoxIntake ? item.unitCost : Number((item.unitCost * t.multiplier).toFixed(2));
+              return { ...t, sellingPrice: newPrice, costPrice: newCost };
+            } else if (t.tierType === 'STRIP') {
+              const stripMult = t.multiplier || 10;
+              const newPrice = isBoxIntake 
+                ? roundCommercial((item.sellingPrice / (baseMultiplier / stripMult)) * 1.08)
+                : roundCommercial(item.sellingPrice * stripMult);
+              const newCost = isBoxIntake 
+                ? Number((item.unitCost / (baseMultiplier / stripMult)).toFixed(2))
+                : Number((item.unitCost * stripMult).toFixed(2));
+              return { ...t, sellingPrice: newPrice, costPrice: newCost };
+            } else {
+              const newPrice = isBoxIntake 
+                ? roundCommercial((item.sellingPrice / baseMultiplier) * 1.15)
+                : item.sellingPrice;
+              const newCost = isBoxIntake 
+                ? Number((item.unitCost / baseMultiplier).toFixed(2))
+                : item.unitCost;
+              return { ...t, sellingPrice: newPrice, costPrice: newCost };
+            }
+          });
+        } else {
+          packagingTiers = updateMasterSellingPrice ? prod?.packagingTiers : undefined;
+        }
       }
 
       return {
@@ -2682,7 +2751,7 @@ export const PurchasingPage: React.FC = () => {
                             </span>
                           </td>
 
-                          {/* Unit Selling Price Column (Prominent & Readable) */}
+                          {/* Unit Selling Price Column (Prominent & Readable with Auto 30% button) */}
                           <td className="p-2 text-right">
                             <div className="space-y-1">
                               <input
@@ -2696,9 +2765,26 @@ export const PurchasingPage: React.FC = () => {
                                 className="w-full px-2.5 py-2 border rounded-xl bg-white dark:bg-slate-900 font-mono font-bold text-right focus:ring-2 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 text-sm text-brand-600 dark:text-brand-400 shadow-sm disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
                                 placeholder="0.00"
                               />
-                              <span className="text-[11px] text-brand-600 dark:text-brand-400 block font-medium">
-                                Sell / {activeUnit}
-                              </span>
+                              <div className="flex items-center justify-between text-[10px] gap-1">
+                                <span className="text-brand-600 dark:text-brand-400 font-medium truncate">
+                                  Sell / {activeUnit}
+                                </span>
+                                {item.unitCost > 0 && purchaseModalMode !== 'view' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateGRNItem(item.id, 'sellingPrice', roundCommercial(item.unitCost / 0.70))}
+                                    className="px-1.5 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950 dark:hover:bg-emerald-900 text-emerald-700 dark:text-emerald-300 font-bold transition whitespace-nowrap shadow-2xs"
+                                    title="Auto-calculate counter selling price using standard 30% margin"
+                                  >
+                                    ⚡ 30% Margin
+                                  </button>
+                                )}
+                              </div>
+                              {matchedProduct && matchedProduct.unitCost > 0 && item.unitCost > matchedProduct.unitCost && (
+                                <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 block text-right">
+                                  ⚠️ Cost +{(((item.unitCost - matchedProduct.unitCost) / matchedProduct.unitCost) * 100).toFixed(0)}% vs catalogue
+                                </span>
+                              )}
                             </div>
                           </td>
 

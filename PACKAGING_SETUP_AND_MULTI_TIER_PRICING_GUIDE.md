@@ -1,63 +1,61 @@
 # GreenLife AI Pharmacy Management System
-## Multi-Tier Packaging Setup & Shelf Pricing Guide
+## Zero-Math Packaging Setup, Shelf Pricing & 1-Tap POS Guide
 
-**Document Version:** 1.0.0  
-**Target Module:** Catalogue & Inventory Management (`CataloguePage.tsx`)  
-**Currency Standard:** Ghana Cedi (GH₵ / GHS) & Authoritative Multi-Currency  
-
----
-
-## 1. Executive Summary & Purpose
-
-In community pharmacy and retail drug dispensary operations, medicines—especially solid orals (tablets and capsules)—are purchased in bulk packaging (Boxes or Cartons) containing blisters/strips, but can be dispensed to patients in three distinct tiers:
-1. **Full Outer Box** (e.g. chronic care refills or full course treatments).
-2. **Individual Strip / Blister** (e.g. 5 or 10 tablets).
-3. **Loose Unit Pieces / Tablets** (e.g. exact daily dosage or single emergency units).
-
-Previously, pharmacy staff were required to calculate loose piece prices, strip prices, bulk discounts, and inventory multipliers manually, leading to pricing errors, margin erosion, or POS inventory mismatches.
-
-The **Simplified Packaging Setup & Shelf Pricing Engine** automates this entire pipeline into 3 intuitive steps with zero manual arithmetic required from the user.
+**Document Version:** 2.0.0  
+**Target Modules:** 
+- Catalogue & Formulations (`CataloguePage.tsx`)
+- Point of Sale Terminal (`PointOfSalePage.tsx`)
+- Goods Received Note & Purchasing (`PurchasingPage.tsx`)  
+**Currency Standard:** Ghana Cedi (GH₵ / GHS) & Multi-Currency  
 
 ---
 
-## 2. Key Features & Workflow Architecture
+## 1. Executive Summary & Philosophy
+
+In busy community pharmacies, staff face high mental friction when forced to do mental arithmetic for unit divisions, multipliers, and odd change calculations while processing deliveries or dispensing at the counter.
+
+The **Zero-Math Packaging & Shelf Pricing Engine** adheres to one principle:
+> **The user enters what is physically on their supplier invoice; the system performs all mathematical breakdowns, commercial roundings, and multi-tier POS buttons automatically.**
+
+---
+
+## 2. Universal 3-Preset Architecture
 
 ```
-+-----------------------------------------------------------------------------------+
-|                           1. PACKAGING DIMENSIONS                                 |
-|   Strips per Box [10]   ×   Tablets per Strip [5]   =   Capacity: 50 Tablets/Box  |
-+------------------------------------------+----------------------------------------+
-                                           |
-                                           v
-+-----------------------------------------------------------------------------------+
-|                             2. QUICK PRICE ENTRY                                  |
-|   Enter Cost per Strip (GH₵ 18.00)  &  Selling Price per Strip (GH₵ 28.50)        |
-+------------------------------------------+----------------------------------------+
-                                           | (Automated Tier Calculations)
-                                           v
-+-----------------------------------------------------------------------------------+
-|                   3. ACTIVE SHELF TIERS & POS OPTIONS TABLE                       |
-|   • [✓] Box:         Buy GH₵ 180.00  | Sell GH₵ 270.75 | Margin: +33.5%           |
-|   • [✓] Strip:       Buy GH₵ 18.00   | Sell GH₵ 28.50  | Margin: +36.8%           |
-|   • [✓] Loose Tab:   Buy GH₵ 3.60    | Sell GH₵ 6.56   | Margin: +45.1%           |
-|                                                                                   |
-|   Margin Health: [ OPTIMAL: Healthy Commercial Margin (15% - 40%) ]               |
-+-----------------------------------------------------------------------------------+
++---------------------------------------------------------------------------------------------------------+
+|                                1. DISPENSARY PACKAGING PRESET (1-Click)                                 |
+|                                                                                                         |
+|   [💊 Blister Box]               [🍼 Single Bottle / Tube]         [📦 Multi-Pack]                      |
+|   Box ➔ Strips ➔ Tablets        1 Bottle = 1 Dispensed Unit       Pack of 20 Sachets / Ampoules         |
++---------------------------------------------------+-----------------------------------------------------+
+                                                    |
+                                                    v
++---------------------------------------------------------------------------------------------------------+
+|                                2. INVOICE INPUT (Only 2 numbers needed!)                                |
+|                                                                                                         |
+|   "Supplier Buy Cost"                 ➔  [ GH₵ 180.00 ]                                                 |
+|   "Strips in this box"                ➔  [ 10 Strips ]                                                  |
+|   "Target Profit Margin"              ➔  [ 25% ] [ 30% ★ ] [ 35% ] [ 40% ]                              |
++---------------------------------------------------+-----------------------------------------------------+
+                                                    | (Automated Breakdown & Clean Rounding)
+                                                    v
++---------------------------------------------------------------------------------------------------------+
+|                               3. AUTO-GENERATED DISPENSARY SHELF TIERS                                  |
+|                                                                                                         |
+|   📦 Full Box     (10 strips)   ➔  Buy: GH₵ 180.00   |  Sell: GH₵ 260.00   (30.8% margin)   [✓ Active]  |
+|   💊 Single Strip (10 tabs)     ➔  Buy: GH₵ 18.00    |  Sell: GH₵ 28.00*   (35.7% margin)   [✓ Active]  |
+|   ⚪ Loose Tablet (1 tab)       ➔  Buy: GH₵ 1.80     |  Sell: GH₵ 3.00*    (40.0% margin)   [✓ Active]  |
+|                                                                                                         |
+|   *Clean commercial rounding applied (eliminates awkward change like 28 or 75 pesewas)                  |
++---------------------------------------------------+-----------------------------------------------------+
+                                                    |
+                                                    v
++---------------------------------------------------------------------------------------------------------+
+|                               4. 1-TAP FAST DISPENSING AT CASHIER POS                                   |
+|                                                                                                         |
+|   [+ 📦 Box (GH₵ 260)]       [+ 💊 Strip (GH₵ 28)]       [+ ⚪ Tablet (GH₵ 3)]                          |
++---------------------------------------------------------------------------------------------------------+
 ```
-
----
-
-## 3. Detailed Component Breakdown
-
-### Step 1: Dosage Form Presets & Commercial Pack Description
-- **Field Guide Dropdowns:** Located next to fields like **Strength / Potency** and **Commercial Pack Description**. Clicking *"Read about this & examples"* displays real-world examples:
-  - *Commercial Pack Description:* `"Box of 10x10 Blister Pack"`, `"100mL Amber Glass Bottle with 5mL Dosing Spoon"`.
-  - *Strength / Potency:* `500mg`, `250mg/5mL`, `100mcg/puff`.
-- **Packaging Mode Selector:**
-  - **Box & Strips (Multi-Tier):** For Tablets, Capsules, Caplets, Lozenges.
-  - **Single Unit:** For Syrups, Suspensions, Ointments, Injections, Drops, Inhalers.
-
----
 
 ### Step 2: Box & Blister Packaging Dimensions
 Pharmacy operators enter two basic values found directly on the medicine packaging:

@@ -7,7 +7,7 @@ import {
   Receipt, Clock, Copy, Check
 } from 'lucide-react';
 import { usePharmacy } from '../../context/PharmacyContext';
-import { CartItem, Product, PaymentTender, Sale, Customer, DraftSale } from '../../types';
+import { CartItem, Product, ProductPackagingTier, PaymentTender, Sale, Customer, DraftSale } from '../../types';
 
 const DEFAULT_WALK_IN_CUSTOMER: Customer = {
   id: 'walk_in',
@@ -166,7 +166,7 @@ export const PointOfSalePage: React.FC = () => {
   });
 
   // Add product to cart with primary packaging tier & strict FEFO batch
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, targetTier?: ProductPackagingTier) => {
     const productBatches = batches
       .filter(b => b.productId === product.id && b.status !== 'QUARANTINED' && b.status !== 'EXPIRED' && b.status !== 'DISPOSED' && b.availableQuantity > 0)
       .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
@@ -178,8 +178,8 @@ export const PointOfSalePage: React.FC = () => {
 
     const fefoBatch = productBatches[0];
 
-    // Pick preferred primary tier (Pack or first packaging tier)
-    const defaultTier = product.packagingTiers?.[0] || {
+    // Pick preferred tier (explicit targetTier, or first packaging tier, or base fallback)
+    const defaultTier = targetTier || product.packagingTiers?.[0] || {
       unitName: product.baseUnit || 'Piece',
       multiplier: 1,
       sellingPrice: product.sellingPrice,
@@ -639,18 +639,39 @@ export const PointOfSalePage: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-slate-900 dark:text-white">
-                      {formatCurrency(primaryTier ? primaryTier.sellingPrice : prod.sellingPrice)}
+                <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">
+                        {formatCurrency(primaryTier ? primaryTier.sellingPrice : prod.sellingPrice)}
+                      </span>
+                      {primaryTier && (
+                        <span className="text-[9px] text-slate-400 block font-medium">/{primaryTier.unitName}</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">
+                      {prod.availableQuantity} {prod.baseUnit}s
                     </span>
-                    {primaryTier && (
-                      <span className="text-[9px] text-slate-400 block font-medium">/{primaryTier.unitName}</span>
-                    )}
                   </div>
-                  <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">
-                    {prod.availableQuantity} {prod.baseUnit}s
-                  </span>
+
+                  {/* 1-Tap Fast Dispensing Tier Buttons for Cashier */}
+                  {prod.packagingTiers && prod.packagingTiers.length > 1 && (
+                    <div className="flex flex-wrap gap-1 mt-2 pt-1.5 border-t border-dashed border-slate-200 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
+                      {prod.packagingTiers.map(tier => (
+                        <button
+                          key={tier.unitName}
+                          type="button"
+                          onClick={() => addToCart(prod, tier)}
+                          className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold border border-emerald-200/80 dark:border-emerald-800/80 transition flex items-center space-x-1 shadow-2xs"
+                          title={`Click to sell 1 ${tier.unitName} for ${formatCurrency(tier.sellingPrice)}`}
+                        >
+                          <span>{tier.unitName === 'Box' || tier.unitName === 'Pack' ? '📦' : tier.unitName === 'Strip' ? '💊' : '⚪'}</span>
+                          <span>{tier.unitName}</span>
+                          <span className="font-mono text-emerald-700 dark:text-emerald-300">({formatCurrency(tier.sellingPrice)})</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -738,19 +759,26 @@ export const PointOfSalePage: React.FC = () => {
                 {/* UNIT SELECTOR & QUANTITY CONTROLS */}
                 <div className="flex items-center justify-between mt-2">
                   <div className="flex items-center space-x-1.5">
-                    {/* Packaging Unit Selector */}
+                    {/* Packaging Unit Selector - Fast Interactive Pills with Dropdown Fallback */}
                     {item.packagingTiers && item.packagingTiers.length > 1 ? (
-                      <select
-                        value={item.selectedUnitName}
-                        onChange={e => changeCartItemUnit(idx, e.target.value)}
-                        className="px-2 py-1 rounded-lg text-[11px] font-bold border border-brand-300 dark:border-brand-800 bg-brand-50/50 dark:bg-brand-950/40 text-brand-800 dark:text-brand-300 focus:outline-none"
-                      >
+                      <div className="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg">
                         {item.packagingTiers.map(t => (
-                          <option key={t.unitName} value={t.unitName}>
-                            {t.unitName} ({formatCurrency(t.sellingPrice)})
-                          </option>
+                          <button
+                            key={t.unitName}
+                            type="button"
+                            onClick={() => changeCartItemUnit(idx, t.unitName)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition flex items-center space-x-0.5 ${
+                              item.selectedUnitName === t.unitName
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                            title={`Switch line to ${t.unitName} (${formatCurrency(t.sellingPrice)})`}
+                          >
+                            <span>{t.unitName === 'Box' || t.unitName === 'Pack' ? '📦' : t.unitName === 'Strip' ? '💊' : '⚪'}</span>
+                            <span>{t.unitName}</span>
+                          </button>
                         ))}
-                      </select>
+                      </div>
                     ) : (
                       <span className="text-[11px] font-semibold text-slate-500">
                         {item.selectedUnitName}
